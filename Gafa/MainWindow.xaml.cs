@@ -26,7 +26,8 @@ namespace Gafa
 		{
 			InitializeComponent();
 
-			MountsList.Instance.Add(new CustomFilesystem(@"U:\", @"C:\Temp"));
+			//MountsList.Instance.Add(new CustomFilesystem(@"U:\", @"C:\Temp"));
+			MountsList.Instance.Add(new GitFilesystem(@"Y:\", @"Z:\Development\Gafa"));
 		}
 
 		private void Mount_Click(object sender, RoutedEventArgs e)

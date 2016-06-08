@@ -8,6 +8,7 @@ using System.IO;
 using System.Security.AccessControl;
 using System.Threading;
 using LibGit2Sharp;
+using Gafa.Dokan;
 
 namespace Gafa.Dokan
 {
@@ -88,25 +89,27 @@ namespace Gafa.Dokan
 
 	public partial class GitFilesystem : IFileSystem, IDokanOperations
 	{
-		FilesystemInformation FilesystemInformation;
-		string RepositoryPath;
+		private RootHandler           m_RootHandler;
+		private FilesystemInformation m_FilesystemInformation;
+		private string                m_RepositoryPath;
 
-		public GitFilesystem(string repositoryPath, string mountPoint)
+		public GitFilesystem(string mountPoint, string repositoryPath)
 		{
-			FilesystemInformation = new FilesystemInformation()
+			m_FilesystemInformation = new FilesystemInformation()
 			{
 				VolumeLabel = Path.GetDirectoryName(repositoryPath),
 				Mountpoint = mountPoint,
 				OpenTime = DateTime.UtcNow
 			};
-			RepositoryPath = repositoryPath;
+			m_RepositoryPath = repositoryPath;
+			m_RootHandler = new RootHandler("", m_RepositoryPath);
 		}
 
 		public void Mount()
 		{
 			new Thread(() =>
 			{
-				DokanNet.Dokan.Mount(this, FilesystemInformation.Mountpoint);
+				DokanNet.Dokan.Mount(this, m_FilesystemInformation.Mountpoint);
 			}).Start();
 		}
 
@@ -114,13 +117,262 @@ namespace Gafa.Dokan
 		{
 			new Thread(() =>
 			{
-				DokanNet.Dokan.RemoveMountPoint(FilesystemInformation.Mountpoint);
+				DokanNet.Dokan.RemoveMountPoint(m_FilesystemInformation.Mountpoint);
 			}).Start();
+		}
+	}
+
+	public static class Git2FilesystemExtensions
+	{
+		public static FileAttributes Convert(this Mode mode)
+		{
+			switch (mode)
+			{
+				case Mode.Directory:
+					return FileAttributes.Directory;
+				case Mode.ExecutableFile:
+				case Mode.NonExecutableFile:
+					return FileAttributes.Normal;
+				default:
+					return FileAttributes.Temporary;
+			}
+		}
+	}
+
+	public static class StucturesExtensions
+	{
+		public static Stack<T> ToStack<T>(this IEnumerable<T> enumerable)
+		{
+			return new Stack<T>(enumerable);
+		}
+
+		public static Queue<T> ToQueue<T>(this IEnumerable<T> enumerable)
+		{
+			return new Queue<T>(enumerable);
+		}
+
+	}
+
+	public interface ISubFolderHandler
+	{
+		//bool Handles(string currPath);
+
+
+		
+
+		//NtStatus FindFiles(Array )
+	}
+
+	public abstract class SubFolderHandler
+	{
+		private string m_Subfolder;
+
+		protected bool IsSubfolder(ref string subfolder) { return m_Subfolder.Equals(subfolder); }
+
+		protected IDictionary<string, SubFolderHandler> m_Handlers;
+
+		protected SubFolderHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers)
+		{
+			m_Handlers = Handlers.ToDictionary(p => p.m_Subfolder);
+		}
+
+		public FileInformation GetFileInformation()
+		{
+			return new FileInformation()
+			{
+				Attributes     = FileAttributes.Directory,
+				CreationTime   = DateTime.UtcNow,
+				LastWriteTime  = DateTime.UtcNow,
+				LastAccessTime = DateTime.UtcNow,
+				FileName       = m_Subfolder
+			};
+		}
+
+		protected void AddHandlersAsSubfolders(ref IList<FileInformation> files)
+		{
+			foreach(var entry in m_Handlers)
+			{
+				files.Add(entry.Value.GetFileInformation());
+			}
+		}
+
+		public abstract NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info);
+	}
+
+	public class BranchHandler : SubFolderHandler
+	{
+		public BranchHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+
+		public override NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info)
+		{
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref currentPath))
+			{
+				return NtStatus.Error;
+			}
+
+			if (filePath.Count != 0)
+			{
+				// we need to go deeper
+
+				var handler = m_Handlers[filePath.Peek()];
+				if(null == handler)
+				{
+					return NtStatus.Error;
+				}
+
+				return handler.FindFiles(ref repository, ref filePath, ref files, info);
+			}
+
+			AddHandlersAsSubfolders(ref files);
+
+			foreach (var branch in repository.Branches.Where(b => !b.IsRemote))
+			{
+				FileInformation branchInformation = new FileInformation()
+				{
+					Attributes = FileAttributes.Directory,
+					LastWriteTime = branch.Tip.Committer.When.UtcDateTime,
+					LastAccessTime = branch.Tip.Committer.When.UtcDateTime,
+					CreationTime = branch.Tip.Committer.When.UtcDateTime,
+					FileName = branch.FriendlyName
+				};
+				files.Add(branchInformation);
+			}
+
+			return DokanResult.Success;
+
+		}
+	}
+
+	public class TagHandler : SubFolderHandler
+	{
+		public TagHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+
+		public override NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info)
+		{
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref currentPath))
+			{
+				return NtStatus.Error;
+			}
+
+			if (filePath.Count != 0)
+			{
+				// we need to go deeper
+
+				var handler = m_Handlers[filePath.Peek()];
+				if (null == handler)
+				{
+					return NtStatus.Error;
+				}
+
+				return handler.FindFiles(ref repository, ref filePath, ref files, info);
+			}
+
+			AddHandlersAsSubfolders(ref files);
+
+			foreach (var tag in repository.Tags)
+			{
+				if (tag.PeeledTarget is Commit)
+				{
+					var taggedCommit = tag.PeeledTarget as Commit;
+
+					FileInformation tagInformation = new FileInformation()
+					{
+						Attributes = FileAttributes.Directory,
+						LastWriteTime = taggedCommit.Committer.When.UtcDateTime,
+						LastAccessTime = taggedCommit.Committer.When.UtcDateTime,
+						CreationTime = taggedCommit.Committer.When.UtcDateTime,
+						FileName = tag.FriendlyName
+					};
+					files.Add(tagInformation);
+				}
+			}
+
+			return DokanResult.Success;
+
+		}
+	}
+
+	public class RootHandler : SubFolderHandler
+	{
+		private string m_RepositoryPath;
+		public RootHandler(string Subfolder, string RepositoryPath) : base(
+			Subfolder,
+			new List<SubFolderHandler>()
+			{
+				new BranchHandler("branches"),
+				new TagHandler("tags")
+			})
+		{
+			m_RepositoryPath = RepositoryPath;
+		}
+
+
+		public override NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info)
+		{
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref currentPath))
+			{
+				return NtStatus.Error;
+			}
+
+			if (filePath.Count != 0)
+			{
+				var handler = m_Handlers[filePath.Peek()];
+				if (null == handler)
+				{
+					return NtStatus.Error;
+				}
+
+				return handler.FindFiles(ref repository, ref filePath, ref files, info);
+			}
+
+			AddHandlersAsSubfolders(ref files);
+			return DokanResult.Success;
+
+			// this folder
+			
+
+			//	var splittedFilePath = fileName.Split('\\').ToStack();
+			//	if ("" == splittedFilePath.Peek())
+			//	{
+			//		splittedFilePath.Pop();
+			//	}
+
+			//	splittedFilePath.Skip()
+			//	var currentBranch = repo.Branches.SingleOrDefault(b => b.FriendlyName == splittedFilePath[1]);
+			//	if (currentBranch == null)
+			//	{
+			//		return DokanResult.Error;
+			//	}
+
+			//	foreach (var treeEntry in currentBranch.Tip.Tree)
+			//	{
+			//		if (treeEntry.Mode == Mode.NonExecutableFile)
+			//		{
+			//			FileInformation treeEntryInformation = new FileInformation()
+			//			{
+			//				Attributes = treeEntry.Mode.Convert(),
+			//				LastWriteTime = currentBranch.Tip.Committer.When.UtcDateTime,
+			//				LastAccessTime = currentBranch.Tip.Committer.When.UtcDateTime,
+			//				CreationTime = currentBranch.Tip.Committer.When.UtcDateTime,
+			//				FileName = treeEntry.Name
+			//			};
+			//			files.Add(treeEntryInformation);
+			//		}
+			//	}
+			//}
+
+			//return DokanResult.Success;
+			//return NtStatus.Success;
 		}
 	}
 
 	public partial class GitFilesystem : IFileSystem, IDokanOperations
 	{
+		
+
 		public NtStatus Mounted(DokanFileInfo info)
 		{
 			return DokanResult.Success;
@@ -140,9 +392,9 @@ namespace Gafa.Dokan
 			{
 
 				fileInfo.Attributes = FileAttributes.Directory;
-				fileInfo.LastAccessTime = FilesystemInformation.OpenTime;
-				fileInfo.LastWriteTime = FilesystemInformation.OpenTime;
-				fileInfo.CreationTime = FilesystemInformation.OpenTime;
+				fileInfo.LastAccessTime = m_FilesystemInformation.OpenTime;
+				fileInfo.LastWriteTime = m_FilesystemInformation.OpenTime;
+				fileInfo.CreationTime = m_FilesystemInformation.OpenTime;
 				return DokanResult.Success;
 			}
 
@@ -194,27 +446,11 @@ namespace Gafa.Dokan
 		{
 
 			files = new List<FileInformation>();
+			var filePath = fileName.Split('\\').ToQueue();
+			filePath.Dequeue();
 
-
-			if(FilesystemStringOperations.IsRoot(fileName))
-			{
-				using (var repo = new Repository(RepositoryPath))
-				{
-					foreach(var branch in repo.Branches.Where(b => !b.IsRemote))
-					{
-						FileInformation branchInformation = new FileInformation()
-						{
-							Attributes = FileAttributes.Directory,
-							LastWriteTime = branch.Tip.Committer.When.UtcDateTime,
-							LastAccessTime = branch.Tip.Committer.When.UtcDateTime,
-							CreationTime = branch.Tip.Committer.When.UtcDateTime,
-							FileName = branch.FriendlyName
-						};
-						files.Add(branchInformation);
-					}
-				}
-			}
-			return DokanResult.Success;
+			var repo = new Repository(m_RepositoryPath);
+			return m_RootHandler.FindFiles(ref repo, ref filePath, ref files, info);
 		}
 
 		public NtStatus FindStreams(string fileName, out IList<FileInformation> streams, DokanFileInfo info)
@@ -246,7 +482,7 @@ namespace Gafa.Dokan
 
 		public NtStatus GetVolumeInformation(out string volumeLabel, out FileSystemFeatures features, out string fileSystemName, DokanFileInfo info)
 		{
-			volumeLabel = "RFS";
+			volumeLabel = m_FilesystemInformation.VolumeLabel;
 			features = FileSystemFeatures.None;
 			fileSystemName = String.Empty;
 			return DokanResult.Success;
@@ -308,7 +544,7 @@ namespace Gafa.Dokan
 	public class CustomFilesystem : FolderEntry, IFileSystem, IDokanOperations
 	{
 		DateTime OpenTime;
-		string VolumeLabel = "GAFA";
+		string VolumeLabel = "RFS";
 
 		public void Mount()
 		{
@@ -471,7 +707,7 @@ namespace Gafa.Dokan
 
 		public NtStatus GetVolumeInformation(out string volumeLabel, out FileSystemFeatures features, out string fileSystemName, DokanFileInfo info)
 		{
-			volumeLabel = "RFS";
+			volumeLabel = VolumeLabel;
 			features = FileSystemFeatures.None;
 			fileSystemName = String.Empty;
 			return DokanResult.Success;
