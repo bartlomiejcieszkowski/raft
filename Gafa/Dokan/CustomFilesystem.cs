@@ -102,7 +102,19 @@ namespace Gafa.Dokan
 				OpenTime = DateTime.UtcNow
 			};
 			m_RepositoryPath = repositoryPath;
-			m_RootHandler = new RootHandler("", m_RepositoryPath);
+			m_RootHandler = new RootHandler("", m_RepositoryPath,
+			new List<SubFolderHandler>()
+			{
+				new BranchesHandler("branches", new List<SubFolderHandler>()
+				{
+					new BranchHandler("*", new List<SubFolderHandler>() {
+						new TreeHandler("*")
+					})
+				}),
+				new TagHandler("tags", new List<SubFolderHandler>() {
+					new TreeHandler("*")
+				})
+			});
 		}
 
 		public void Mount()
@@ -153,26 +165,17 @@ namespace Gafa.Dokan
 
 	}
 
-	public interface ISubFolderHandler
-	{
-		//bool Handles(string currPath);
-
-
-		
-
-		//NtStatus FindFiles(Array )
-	}
-
 	public abstract class SubFolderHandler
 	{
-		private string m_Subfolder;
+		protected string m_Subfolder;
 
-		protected bool IsSubfolder(ref string subfolder) { return m_Subfolder.Equals(subfolder); }
+		protected virtual bool IsSubfolder(ref string subfolder) { return m_Subfolder.Equals(subfolder); }
 
 		protected IDictionary<string, SubFolderHandler> m_Handlers;
 
 		protected SubFolderHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers)
 		{
+			m_Subfolder = Subfolder;
 			m_Handlers = Handlers.ToDictionary(p => p.m_Subfolder);
 		}
 
@@ -192,19 +195,134 @@ namespace Gafa.Dokan
 		{
 			foreach(var entry in m_Handlers)
 			{
+				if (entry.Value == this) continue;
+				if (entry.Value.m_Subfolder == "*") continue;
+
 				files.Add(entry.Value.GetFileInformation());
 			}
 		}
 
-		public abstract NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info);
+		public abstract NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null);
+	}
+
+	public class TreeHandler : SubFolderHandler
+	{
+		public TreeHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public TreeHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
+
+		protected bool IsSubfolder(ref Repository repository, ref string subfolder)
+		{
+			string lSubfolder = subfolder;
+			return repository.Branches.Single(b => b.FriendlyName.Equals(lSubfolder)) != null;
+		}
+
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		{
+			if (!(UnkObject is Tree))
+			{
+				return NtStatus.Error;
+			}
+
+			if (!(UnkObject2 is Commit))
+			{
+				return NtStatus.Error;
+			}
+
+			var tree = UnkObject as Tree;
+			var commit = UnkObject2 as Commit;
+
+			while(filePath.Count != 0)
+			{
+				var currentPath = filePath.Dequeue();
+				var treeEntry = tree.Single(te => te.TargetType == TreeEntryTargetType.Tree && te.Name.Equals(currentPath));
+				if(null == treeEntry)
+				{
+					return NtStatus.Error;
+				}
+
+				if(null == treeEntry.Target)
+				{
+					return NtStatus.Error;
+				}
+
+				tree = treeEntry.Target as Tree;
+			}
+
+			foreach (var treeEntry in tree)
+			{
+				FileInformation treeEntryInformation = new FileInformation()
+				{
+					FileName = treeEntry.Name,
+					Attributes = treeEntry.Mode.Convert(),
+					CreationTime = commit.Committer.When.UtcDateTime,
+					LastWriteTime = commit.Committer.When.UtcDateTime,
+					LastAccessTime = commit.Committer.When.UtcDateTime,
+				};
+				files.Add(treeEntryInformation);
+			}
+
+			return NtStatus.Success;
+		}
 	}
 
 	public class BranchHandler : SubFolderHandler
 	{
 		public BranchHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public BranchHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
-		public override NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info)
+		protected bool IsSubfolder(ref Repository repository, ref string subfolder)
 		{
+			string lSubfolder = subfolder;
+			return repository.Branches.Single(b => b.FriendlyName.Equals(lSubfolder)) != null;
+		}
+
+		
+
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		{
+			if (!(UnkObject is Repository))
+			{
+				return NtStatus.Error;
+			}
+
+			var repository = UnkObject as Repository;
+
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref repository, ref currentPath))
+			{
+				return NtStatus.Error;
+			}
+
+			var currentBranch = repository.Branches.Single(b => b.FriendlyName.Equals(currentPath));
+
+			
+			SubFolderHandler handler;
+			//if (!m_Handlers.TryGetValue(filePath.Peek(), out handler))
+			//{
+			if (!m_Handlers.TryGetValue("*", out handler))
+			{
+				return NtStatus.Error;
+			}
+			//}
+
+			return handler.FindFiles(ref filePath, ref files, info, currentBranch.Tip.Tree, currentBranch.Tip);
+		}
+	}
+
+	public class BranchesHandler : SubFolderHandler
+	{
+		public BranchesHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public BranchesHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
+
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		{
+			if(!(UnkObject is Repository))
+			{
+				return NtStatus.Error;
+			}
+
+			var repository = UnkObject as Repository;
+
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref currentPath))
 			{
@@ -215,13 +333,16 @@ namespace Gafa.Dokan
 			{
 				// we need to go deeper
 
-				var handler = m_Handlers[filePath.Peek()];
-				if(null == handler)
+				SubFolderHandler handler;
+				if (!m_Handlers.TryGetValue(filePath.Peek(), out handler))
 				{
-					return NtStatus.Error;
+					if (!m_Handlers.TryGetValue("*", out handler))
+					{
+						return NtStatus.Error;
+					}
 				}
 
-				return handler.FindFiles(ref repository, ref filePath, ref files, info);
+				return handler.FindFiles(ref filePath, ref files, info, UnkObject);
 			}
 
 			AddHandlersAsSubfolders(ref files);
@@ -247,9 +368,17 @@ namespace Gafa.Dokan
 	public class TagHandler : SubFolderHandler
 	{
 		public TagHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public TagHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
-		public override NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info)
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
+			if (!(UnkObject is Repository))
+			{
+				return NtStatus.Error;
+			}
+
+			var repository = UnkObject as Repository;
+
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref currentPath))
 			{
@@ -258,15 +387,25 @@ namespace Gafa.Dokan
 
 			if (filePath.Count != 0)
 			{
+				var nextPath = filePath.Dequeue();
+				var currentTag = repository.Tags.Single(b => b.FriendlyName.Equals(nextPath));
 				// we need to go deeper
 
-				var handler = m_Handlers[filePath.Peek()];
-				if (null == handler)
+				if(null == currentTag)
 				{
 					return NtStatus.Error;
 				}
 
-				return handler.FindFiles(ref repository, ref filePath, ref files, info);
+				SubFolderHandler handler;
+				//if (!m_Handlers.TryGetValue(filePath.Peek(), out handler))
+				//{
+				if (!m_Handlers.TryGetValue("*", out handler))
+				{
+					return NtStatus.Error;
+				}
+				//}
+				var currentCommit = currentTag.PeeledTarget as Commit;
+				return handler.FindFiles(ref filePath, ref files, info, currentCommit.Tree, currentCommit);
 			}
 
 			AddHandlersAsSubfolders(ref files);
@@ -288,7 +427,6 @@ namespace Gafa.Dokan
 					files.Add(tagInformation);
 				}
 			}
-
 			return DokanResult.Success;
 
 		}
@@ -297,19 +435,15 @@ namespace Gafa.Dokan
 	public class RootHandler : SubFolderHandler
 	{
 		private string m_RepositoryPath;
-		public RootHandler(string Subfolder, string RepositoryPath) : base(
-			Subfolder,
-			new List<SubFolderHandler>()
-			{
-				new BranchHandler("branches"),
-				new TagHandler("tags")
-			})
+		public RootHandler(string Subfolder, string RepositoryPath, IEnumerable<SubFolderHandler> Handlers) : base(
+			Subfolder, Handlers)
 		{
 			m_RepositoryPath = RepositoryPath;
+			m_Handlers.Add(m_Subfolder, this);
 		}
 
 
-		public override NtStatus FindFiles(ref Repository repository, ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info)
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref currentPath))
@@ -317,55 +451,23 @@ namespace Gafa.Dokan
 				return NtStatus.Error;
 			}
 
+
 			if (filePath.Count != 0)
 			{
-				var handler = m_Handlers[filePath.Peek()];
-				if (null == handler)
+				SubFolderHandler handler;
+				if (!m_Handlers.TryGetValue(filePath.Peek(), out handler))
 				{
-					return NtStatus.Error;
+					if (!m_Handlers.TryGetValue("*", out handler))
+					{
+						return NtStatus.Error;
+					}
 				}
 
-				return handler.FindFiles(ref repository, ref filePath, ref files, info);
+				return handler.FindFiles(ref filePath, ref files, info, UnkObject, UnkObject2);
 			}
 
 			AddHandlersAsSubfolders(ref files);
 			return DokanResult.Success;
-
-			// this folder
-			
-
-			//	var splittedFilePath = fileName.Split('\\').ToStack();
-			//	if ("" == splittedFilePath.Peek())
-			//	{
-			//		splittedFilePath.Pop();
-			//	}
-
-			//	splittedFilePath.Skip()
-			//	var currentBranch = repo.Branches.SingleOrDefault(b => b.FriendlyName == splittedFilePath[1]);
-			//	if (currentBranch == null)
-			//	{
-			//		return DokanResult.Error;
-			//	}
-
-			//	foreach (var treeEntry in currentBranch.Tip.Tree)
-			//	{
-			//		if (treeEntry.Mode == Mode.NonExecutableFile)
-			//		{
-			//			FileInformation treeEntryInformation = new FileInformation()
-			//			{
-			//				Attributes = treeEntry.Mode.Convert(),
-			//				LastWriteTime = currentBranch.Tip.Committer.When.UtcDateTime,
-			//				LastAccessTime = currentBranch.Tip.Committer.When.UtcDateTime,
-			//				CreationTime = currentBranch.Tip.Committer.When.UtcDateTime,
-			//				FileName = treeEntry.Name
-			//			};
-			//			files.Add(treeEntryInformation);
-			//		}
-			//	}
-			//}
-
-			//return DokanResult.Success;
-			//return NtStatus.Success;
 		}
 	}
 
@@ -447,10 +549,9 @@ namespace Gafa.Dokan
 
 			files = new List<FileInformation>();
 			var filePath = fileName.Split('\\').ToQueue();
-			filePath.Dequeue();
 
 			var repo = new Repository(m_RepositoryPath);
-			return m_RootHandler.FindFiles(ref repo, ref filePath, ref files, info);
+			return m_RootHandler.FindFiles(ref filePath, ref files, info, repo);
 		}
 
 		public NtStatus FindStreams(string fileName, out IList<FileInformation> streams, DokanFileInfo info)
