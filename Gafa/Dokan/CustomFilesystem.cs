@@ -2,13 +2,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.IO;
 using System.Security.AccessControl;
 using System.Threading;
 using LibGit2Sharp;
-using Gafa.Dokan;
+using Gafa.Patterns;
+using Gafa.Logging;
+using Gafa.GitToFileSystem;
+using Gafa.FileSystem;
 
 namespace Gafa.Dokan
 {
@@ -18,51 +19,38 @@ namespace Gafa.Dokan
 		public string Folderpath;
 	}
 
-	public class Singleton<U> where U : class, new()
+	public class MountsList : Logger
 	{
-		private static U _instance;
+		public ICollection<IFileSystem> m_FileSystems;
 
-		public static U Instance
+		public MountsList(ICollection<IFileSystem> FileSystems) : base()
 		{
-			get
-			{
-				if (_instance == null)
-				{
-					lock (safetyLock)
-					{
-						if (_instance == null)
-						{
-							_instance = new U();
-						}
-					}
-				}
-				return _instance;
-			}
+			m_FileSystems = FileSystems;
 		}
 
-		protected Singleton() { }
-
-		private static object safetyLock = new object();
-	}
-
-	public class MountsList : Singleton<List<IFileSystem>>
-	{
-		private MountsList() : base() { }
-
-		public static void Mount()
+		public MountsList() : base()
 		{
-			foreach(var entry in Instance)
-			{
-				entry.Mount();
-			}
+			m_FileSystems = new List<IFileSystem>();
 		}
 
-		public static void Unmount()
+		public void Mount()
 		{
-			foreach(var entry in Instance)
+			Log.Log(Default, LogEnter);
+			foreach(var fileSystem in m_FileSystems)
 			{
-				entry.Unmount();
+				fileSystem.Mount();
 			}
+			Log.Log(Default, LogExit);
+		}
+
+		public void Unmount()
+		{
+			Log.Log(Default, LogEnter);
+			foreach (var fileSystem in m_FileSystems)
+			{
+				fileSystem.Unmount();
+			}
+			Log.Log(Default, LogExit);
 		}
 	}
 
@@ -87,14 +75,15 @@ namespace Gafa.Dokan
 		public string Mountpoint;
 	}
 
-	public partial class GitFilesystem : IFileSystem, IDokanOperations
+	public partial class GitFilesystem : Logger, IFileSystem, IDokanOperations
 	{
-		private RootHandler           m_RootHandler;
+		private SubFolderHandler           m_RootHandler;
 		private FilesystemInformation m_FilesystemInformation;
 		private string                m_RepositoryPath;
 
-		public GitFilesystem(string mountPoint, string repositoryPath)
+		public GitFilesystem(string mountPoint, string repositoryPath, SubFolderHandler Handler) : base()
 		{
+			Log.Log(Default, LogEnter);
 			m_FilesystemInformation = new FilesystemInformation()
 			{
 				VolumeLabel = Path.GetDirectoryName(repositoryPath),
@@ -102,112 +91,36 @@ namespace Gafa.Dokan
 				OpenTime = DateTime.UtcNow
 			};
 			m_RepositoryPath = repositoryPath;
-			m_RootHandler = new RootHandler("", m_RepositoryPath,
-			new List<SubFolderHandler>()
-			{
-				new BranchesHandler("branches", new List<SubFolderHandler>()
-				{
-					new BranchHandler("*", new List<SubFolderHandler>() {
-						new TreeHandler("*")
-					})
-				}),
-				new TagHandler("tags", new List<SubFolderHandler>() {
-					new TreeHandler("*")
-				})
-			});
+			m_RootHandler = Handler;
+			Log.Log(Default, LogExit);
 		}
 
 		public void Mount()
 		{
+			Log.Log(Default, LogEnter);
 			new Thread(() =>
 			{
 				DokanNet.Dokan.Mount(this, m_FilesystemInformation.Mountpoint);
 			}).Start();
+			Log.Log(Default, LogExit);
 		}
 
 		public void Unmount()
 		{
+			Log.Log(Default, LogEnter);
 			new Thread(() =>
 			{
 				DokanNet.Dokan.RemoveMountPoint(m_FilesystemInformation.Mountpoint);
 			}).Start();
+			Log.Log(Default, LogExit);
 		}
 	}
 
-	public static class Git2FilesystemExtensions
-	{
-		public static FileAttributes Convert(this Mode mode)
-		{
-			switch (mode)
-			{
-				case Mode.Directory:
-					return FileAttributes.Directory;
-				case Mode.ExecutableFile:
-				case Mode.NonExecutableFile:
-					return FileAttributes.Normal;
-				default:
-					return FileAttributes.Temporary;
-			}
-		}
-	}
-
-	public static class StucturesExtensions
-	{
-		public static Stack<T> ToStack<T>(this IEnumerable<T> enumerable)
-		{
-			return new Stack<T>(enumerable);
-		}
-
-		public static Queue<T> ToQueue<T>(this IEnumerable<T> enumerable)
-		{
-			return new Queue<T>(enumerable);
-		}
-
-	}
-
-	public abstract class SubFolderHandler
-	{
-		protected string m_Subfolder;
-
-		protected virtual bool IsSubfolder(ref string subfolder) { return m_Subfolder.Equals(subfolder); }
-
-		protected IDictionary<string, SubFolderHandler> m_Handlers;
-
-		protected SubFolderHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers)
-		{
-			m_Subfolder = Subfolder;
-			m_Handlers = Handlers.ToDictionary(p => p.m_Subfolder);
-		}
-
-		public FileInformation GetFileInformation()
-		{
-			return new FileInformation()
-			{
-				Attributes     = FileAttributes.Directory,
-				CreationTime   = DateTime.UtcNow,
-				LastWriteTime  = DateTime.UtcNow,
-				LastAccessTime = DateTime.UtcNow,
-				FileName       = m_Subfolder
-			};
-		}
-
-		protected void AddHandlersAsSubfolders(ref IList<FileInformation> files)
-		{
-			foreach(var entry in m_Handlers)
-			{
-				if (entry.Value == this) continue;
-				if (entry.Value.m_Subfolder == "*") continue;
-
-				files.Add(entry.Value.GetFileInformation());
-			}
-		}
-
-		public abstract NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null);
-	}
 
 	public class TreeHandler : SubFolderHandler
 	{
-		public TreeHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public TreeHandler(string Subfolder) : base(Subfolder) { }
+		public TreeHandler(string Subfolder, SubFolderHandler Handler) : base(Subfolder, Handler) { }
 		public TreeHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
 		protected bool IsSubfolder(ref Repository repository, ref string subfolder)
@@ -218,6 +131,7 @@ namespace Gafa.Dokan
 
 		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
+			Log.Log(Default, LogEnter);
 			if (!(UnkObject is Tree))
 			{
 				return NtStatus.Error;
@@ -261,6 +175,7 @@ namespace Gafa.Dokan
 				files.Add(treeEntryInformation);
 			}
 
+			Log.Log(Default, LogExit);
 			return NtStatus.Success;
 		}
 	}
@@ -268,6 +183,7 @@ namespace Gafa.Dokan
 	public class BranchHandler : SubFolderHandler
 	{
 		public BranchHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public BranchHandler(string Subfolder, SubFolderHandler Handler) : base(Subfolder, Handler) { }
 		public BranchHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
 		protected bool IsSubfolder(ref Repository repository, ref string subfolder)
@@ -280,6 +196,7 @@ namespace Gafa.Dokan
 
 		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
+			Log.Log(Default, LogEnter);
 			if (!(UnkObject is Repository))
 			{
 				return NtStatus.Error;
@@ -304,19 +221,21 @@ namespace Gafa.Dokan
 				return NtStatus.Error;
 			}
 			//}
-
+			Log.Log(Default, LogExit);
 			return handler.FindFiles(ref filePath, ref files, info, currentBranch.Tip.Tree, currentBranch.Tip);
 		}
 	}
 
 	public class BranchesHandler : SubFolderHandler
 	{
-		public BranchesHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public BranchesHandler(string Subfolder) : base(Subfolder) { }
+		public BranchesHandler(string Subfolder, SubFolderHandler Handler) : base(Subfolder, Handler) { }
 		public BranchesHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
 		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
-			if(!(UnkObject is Repository))
+			Log.Log(Default, LogEnter);
+			if (!(UnkObject is Repository))
 			{
 				return NtStatus.Error;
 			}
@@ -359,7 +278,7 @@ namespace Gafa.Dokan
 				};
 				files.Add(branchInformation);
 			}
-
+			Log.Log(Default, LogExit);
 			return DokanResult.Success;
 
 		}
@@ -368,10 +287,12 @@ namespace Gafa.Dokan
 	public class TagHandler : SubFolderHandler
 	{
 		public TagHandler(string Subfolder) : base(Subfolder, new List<SubFolderHandler>()) { }
+		public TagHandler(string Subfolder, SubFolderHandler Handler) : base(Subfolder, Handler) { }
 		public TagHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
 		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
+			Log.Log(Default, LogEnter);
 			if (!(UnkObject is Repository))
 			{
 				return NtStatus.Error;
@@ -427,6 +348,7 @@ namespace Gafa.Dokan
 					files.Add(tagInformation);
 				}
 			}
+			Log.Log(Default, LogExit);
 			return DokanResult.Success;
 
 		}
@@ -435,16 +357,35 @@ namespace Gafa.Dokan
 	public class RootHandler : SubFolderHandler
 	{
 		private string m_RepositoryPath;
+		public RootHandler(string Subfolder, string RepositoryPath) : base(Subfolder)
+		{
+			Log.Log(Default, LogEnter);
+			m_RepositoryPath = RepositoryPath;
+			m_Handlers.Add(m_Subfolder, this);
+			Log.Log(Default, LogExit);
+		}
+
+		public RootHandler(string Subfolder, string RepositoryPath, SubFolderHandler Handler) : base(Subfolder, Handler)
+		{
+			Log.Log(Default, LogEnter);
+			m_RepositoryPath = RepositoryPath;
+			m_Handlers.Add(m_Subfolder, this);
+			Log.Log(Default, LogExit);
+		}
+
 		public RootHandler(string Subfolder, string RepositoryPath, IEnumerable<SubFolderHandler> Handlers) : base(
 			Subfolder, Handlers)
 		{
+			Log.Log(Default, LogEnter);
 			m_RepositoryPath = RepositoryPath;
 			m_Handlers.Add(m_Subfolder, this);
+			Log.Log(Default, LogExit);
 		}
 
 
 		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
 		{
+			Log.Log(Default, LogEnter);
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref currentPath))
 			{
@@ -467,6 +408,7 @@ namespace Gafa.Dokan
 			}
 
 			AddHandlersAsSubfolders(ref files);
+			Log.Log(Default, LogExit);
 			return DokanResult.Success;
 		}
 	}
@@ -500,19 +442,6 @@ namespace Gafa.Dokan
 				return DokanResult.Success;
 			}
 
-			//var fileNameWithPath = Path.Combine(Folderpath, fileName);
-			//if (!File.Exists(fileNameWithPath))
-			//{
-			//	return DokanResult.Error;
-			//}
-
-			//var fileInfoI = new FileInfo(fileNameWithPath);
-
-			//fileInfo.Attributes = fileInfoI.Attributes;
-			//fileInfo.LastAccessTime = fileInfoI.LastAccessTimeUtc;
-			//fileInfo.LastWriteTime = fileInfoI.LastWriteTimeUtc;
-			//fileInfo.LastAccessTime = fileInfoI.LastAccessTimeUtc;
-			//fileInfo.Length = fileInfoI.Length;
 			return DokanResult.Success;
 		}
 

@@ -13,7 +13,8 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 using Gafa.Dokan;
-
+using Gafa.Patterns;
+using Gafa.FileSystem;
 
 namespace Gafa
 {
@@ -26,18 +27,29 @@ namespace Gafa
 		{
 			InitializeComponent();
 
-			//MountsList.Instance.Add(new CustomFilesystem(@"U:\", @"C:\Temp"));
-			MountsList.Instance.Add(new GitFilesystem(@"Y:\", @"Z:\Development\Gafa"));
+
+			//Singleton<MountsList>.Instance.Add(new CustomFilesystem(@"U:\", @"C:\Temp"));
+			var treeHandler = new TreeHandler("*");
+			var repositoryPath = @"Z:\Development\Gafa";
+			Singleton<MountsList>.Instance.m_FileSystems.Add(
+				new GitFilesystem(
+					@"Y:\",
+					@"Z:\Development\Gafa",
+					new RootHandler("", repositoryPath, new List<SubFolderHandler>()
+					{
+						new BranchesHandler("branches", new BranchHandler("*", treeHandler)),
+						new TagHandler("tags", treeHandler)
+					})));
 		}
 
 		private void Mount_Click(object sender, RoutedEventArgs e)
 		{
-			MountsList.Mount();
+			Singleton<MountsList>.Instance.Mount();
 		}
 
 		private void Unmount_Click(object sender, RoutedEventArgs e)
 		{
-			MountsList.Unmount();
+			Singleton<MountsList>.Instance.Unmount();
 		}
 	}
 }

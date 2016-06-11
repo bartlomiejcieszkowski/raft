@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Gafa"
+        xmlns:nlog="clr-namespace:NlogViewer;assembly=NlogViewer"
         mc:Ignorable="d"
         Title="GAFA" Height="350" Width="525">
     <Grid>
@@ -11,7 +12,17 @@
             <ColumnDefinition Width="1*"></ColumnDefinition>
             <ColumnDefinition Width="1*"></ColumnDefinition>
         </Grid.ColumnDefinitions>
-        <Button Margin="10" Grid.Column="0" Content="Mount" Click="Mount_Click"/>
-        <Button Margin="10" Grid.Column="1" Content="Unmount" Click="Unmount_Click"/>
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="1*" />
+            </Grid.RowDefinitions>
+            <Button Margin="10" Grid.Row="0" Content="Mount" Click="Mount_Click"/>
+            <Button Margin="10" Grid.Row="1" Content="Unmount" Click="Unmount_Click"/>
+        </Grid>
+        <Grid Grid.Column="1">
+            <nlog:NlogViewer x:Name="logCtrl" TimeWidth="AUTO" LoggerNameWidth="0" LevelWidth="auto" ExceptionWidth="auto" MessageWidth="auto" />
+        </Grid>
+        
     </Grid>
 </Window>
