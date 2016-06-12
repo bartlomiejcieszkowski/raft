@@ -1,22 +1,22 @@
 ﻿using DokanNet;
+using Gafa.FileSystem;
+using Gafa.Logging;
 using Gafa.Patterns;
 using LibGit2Sharp;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.AccessControl;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Gafa.Dokan
 {
-	public partial class GitFilesystem : IFileSystem, IDokanOperations
+	public partial class GitFilesystem : Logger, IFileSystem, IDokanOperations
 	{
-
 
 		public NtStatus Mounted(DokanFileInfo info)
 		{
+			Log.Log(Default, LogEnter);
+			Log.Log(Default, LogExit);
 			return DokanResult.Success;
 		}
 
@@ -54,7 +54,7 @@ namespace Gafa.Dokan
 
 		public NtStatus CreateFile(string fileName, DokanNet.FileAccess access, FileShare share, FileMode mode, FileOptions options, FileAttributes attributes, DokanFileInfo info)
 		{
-			if (info.IsDirectory && mode == System.IO.FileMode.CreateNew)
+			if (info.IsDirectory && mode == FileMode.CreateNew)
 			{
 				return DokanResult.AccessDenied;
 			}

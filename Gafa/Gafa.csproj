@@ -85,6 +85,9 @@
     <Compile Include="Dokan\CustomFilesystem.cs" />
     <Compile Include="Dokan\GitFilesystem.IDokanOperations.cs" />
     <Compile Include="Dokan\GitFilesystem.cs" />
+    <Compile Include="FileSystem\IFileSystem.cs" />
+    <Compile Include="FileSystem\ISubFolderHandler.cs" />
+    <Compile Include="FileSystem\MountsList.cs" />
     <Compile Include="FileSystem\SubFolderHandler.cs" />
     <Compile Include="FileSystem\SubFolderHandlers.cs" />
     <Compile Include="GitToFileSystem\Helpers.cs" />
