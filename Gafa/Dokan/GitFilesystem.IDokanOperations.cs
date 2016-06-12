@@ -1,127 +1,22 @@
 ﻿using DokanNet;
+using Gafa.Patterns;
+using LibGit2Sharp;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.IO;
+using System.Linq;
 using System.Security.AccessControl;
-using System.Threading;
-using LibGit2Sharp;
-using Gafa.Patterns;
-using Gafa.Logging;
-using Gafa.GitToFileSystem;
-using Gafa.FileSystem;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace Gafa.Dokan
 {
-	public class FolderEntry
+	public partial class GitFilesystem : IFileSystem, IDokanOperations
 	{
-		public string m_Mountpoint;
-		public string m_Folderpath;
-	}
 
-	public class MountsList : Logger
-	{
-		public ICollection<IFileSystem> m_FileSystems;
-
-		public MountsList(ICollection<IFileSystem> FileSystems) : base()
-		{
-			m_FileSystems = FileSystems;
-		}
-
-		public MountsList() : base()
-		{
-			m_FileSystems = new List<IFileSystem>();
-		}
-
-		public void Mount()
-		{
-			Log.Log(Default, LogEnter);
-			foreach(var fileSystem in m_FileSystems)
-			{
-				fileSystem.Mount();
-			}
-			Log.Log(Default, LogExit);
-		}
-
-		public void Unmount()
-		{
-			Log.Log(Default, LogEnter);
-			foreach (var fileSystem in m_FileSystems)
-			{
-				fileSystem.Unmount();
-			}
-			Log.Log(Default, LogExit);
-		}
-	}
-
-	public interface IFileSystem
-	{
-		/// <summary>
-		/// Mounts filesystem
-		/// </summary>
-		void Mount();
-		/// <summary>
-		/// Unmounts filesystem
-		/// </summary>
-		void Unmount();
-	}
-
-	public class FilesystemStringOperations
-	{
-		/// <summary>
-		/// Checks whether path is a root.
-		/// </summary>
-		/// <param name="Path">path</param>
-		/// <returns></returns>
-		public static bool IsRoot(string Path)
-		{
-			return Path == @"\";
-		}
-	}
-
-	public class FilesystemInformation
-	{
-		public DateTime m_OpenTime;
-		public string   m_VolumeLabel;
-		public string   m_Mountpoint;
-	}
-
-
-
-	public class CustomFilesystem : FolderEntry, IFileSystem, IDokanOperations
-	{
-		DateTime OpenTime;
-		string VolumeLabel = "RFS";
-
-		public void Mount()
-		{
-			new Thread(() =>
-			{
-				DokanNet.Dokan.Mount(this, GetMountpoint());
-			}).Start();
-		}
-
-		public void Unmount()
-		{
-			new Thread(() =>
-			{
-				DokanNet.Dokan.RemoveMountPoint(GetMountpoint());
-			}).Start();
-		}
-
-		public string GetMountpoint() { return m_Mountpoint; }
-
-
-		public CustomFilesystem(string mountpoint, string path) : base()
-		{
-			OpenTime = DateTime.UtcNow;
-			m_Mountpoint = mountpoint;
-			m_Folderpath = path;
-		}
 
 		public NtStatus Mounted(DokanFileInfo info)
 		{
-			OpenTime = DateTime.UtcNow;
 			return DokanResult.Success;
 		}
 
@@ -135,29 +30,16 @@ namespace Gafa.Dokan
 			fileInfo = new FileInformation();
 			fileInfo.FileName = fileName;
 
-			if(FilesystemStringOperations.IsRoot(fileName))
+			if (FilesystemStringOperations.IsRoot(fileName))
 			{
 
 				fileInfo.Attributes = FileAttributes.Directory;
-				fileInfo.LastAccessTime = OpenTime;
-				fileInfo.LastWriteTime = OpenTime;
-				fileInfo.CreationTime = OpenTime;
+				fileInfo.LastAccessTime = m_FilesystemInformation.m_OpenTime;
+				fileInfo.LastWriteTime = m_FilesystemInformation.m_OpenTime;
+				fileInfo.CreationTime = m_FilesystemInformation.m_OpenTime;
 				return DokanResult.Success;
 			}
 
-			var fileNameWithPath =  Path.Combine(m_Folderpath, fileName);
-			if(!File.Exists(fileNameWithPath))
-			{
-				return DokanResult.Error;
-			}
-
-			var fileInfoI = new FileInfo(fileNameWithPath);
-
-			fileInfo.Attributes = fileInfoI.Attributes;
-			fileInfo.LastAccessTime = fileInfoI.LastAccessTimeUtc;
-			fileInfo.LastWriteTime = fileInfoI.LastWriteTimeUtc;
-			fileInfo.LastAccessTime = fileInfoI.LastAccessTimeUtc;
-			fileInfo.Length = fileInfoI.Length;
 			return DokanResult.Success;
 		}
 
@@ -172,7 +54,7 @@ namespace Gafa.Dokan
 
 		public NtStatus CreateFile(string fileName, DokanNet.FileAccess access, FileShare share, FileMode mode, FileOptions options, FileAttributes attributes, DokanFileInfo info)
 		{
-			if(info.IsDirectory && mode == System.IO.FileMode.CreateNew)
+			if (info.IsDirectory && mode == System.IO.FileMode.CreateNew)
 			{
 				return DokanResult.AccessDenied;
 			}
@@ -191,38 +73,12 @@ namespace Gafa.Dokan
 
 		public NtStatus FindFiles(string fileName, out IList<FileInformation> files, DokanFileInfo info)
 		{
-			
+
 			files = new List<FileInformation>();
-			DirectoryInfo dirInfo = new DirectoryInfo(Path.Combine(m_Folderpath, fileName.TrimStart('\\')));
-			//if(fileName == @"\")
-			//{
+			var filePath = fileName.Split('\\').ToQueue();
 
-			foreach (var directoryInfo in dirInfo.GetDirectories())
-			{
-				FileInformation fileInfoD = new FileInformation();
-				fileInfoD.FileName = directoryInfo.Name;
-				fileInfoD.Attributes = directoryInfo.Attributes;
-				fileInfoD.LastAccessTime = directoryInfo.LastAccessTimeUtc;
-				fileInfoD.LastWriteTime = directoryInfo.LastWriteTimeUtc;
-				fileInfoD.CreationTime = directoryInfo.CreationTimeUtc;
-				files.Add(fileInfoD);
-
-			}
-
-			foreach (var fileinfo in dirInfo.GetFiles())
-			{
-				FileInformation fileInfoD = new FileInformation();
-				fileInfoD.FileName = fileinfo.Name;
-				fileInfoD.Attributes = fileinfo.Attributes;
-				fileInfoD.LastAccessTime = fileinfo.LastAccessTimeUtc;
-				fileInfoD.LastWriteTime = fileinfo.LastWriteTimeUtc;
-				fileInfoD.CreationTime = fileinfo.CreationTimeUtc;
-				fileInfoD.Length = fileinfo.Length;
-				files.Add(fileInfoD);
-			}
-			//}
-
-			return DokanResult.Success;
+			var repo = new Repository(m_RepositoryPath);
+			return m_RootHandler.FindFiles(ref filePath, ref files, info, repo);
 		}
 
 		public NtStatus FindStreams(string fileName, out IList<FileInformation> streams, DokanFileInfo info)
@@ -254,7 +110,7 @@ namespace Gafa.Dokan
 
 		public NtStatus GetVolumeInformation(out string volumeLabel, out FileSystemFeatures features, out string fileSystemName, DokanFileInfo info)
 		{
-			volumeLabel = VolumeLabel;
+			volumeLabel = m_FilesystemInformation.m_VolumeLabel;
 			features = FileSystemFeatures.None;
 			fileSystemName = String.Empty;
 			return DokanResult.Success;
@@ -312,4 +168,5 @@ namespace Gafa.Dokan
 			return DokanResult.Error;
 		}
 	}
+
 }

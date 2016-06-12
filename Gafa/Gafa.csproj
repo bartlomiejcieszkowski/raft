@@ -83,8 +83,14 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Dokan\CustomFilesystem.cs" />
+    <Compile Include="Dokan\GitFilesystem.IDokanOperations.cs" />
+    <Compile Include="Dokan\GitFilesystem.cs" />
     <Compile Include="FileSystem\SubFolderHandler.cs" />
+    <Compile Include="FileSystem\SubFolderHandlers.cs" />
     <Compile Include="GitToFileSystem\Helpers.cs" />
+    <Compile Include="Helper\WpfRichTextBoxRowColoringRule.cs" />
+    <Compile Include="Helper\WpfRichTextBoxTarget.cs" />
+    <Compile Include="Helper\WpfRichTextBoxWordColoringRule.cs" />
     <Compile Include="Logger\Logger.cs" />
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
@@ -112,6 +118,7 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
     <None Include="Graph.dgml" />
+    <Resource Include="Helper\README_NLog_WpfRichTextBox.txt" />
     <Content Include="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <SubType>Designer</SubType>
