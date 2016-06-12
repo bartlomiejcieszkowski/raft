@@ -6,6 +6,8 @@
         xmlns:local="clr-namespace:Gafa"
         xmlns:nlog="clr-namespace:NlogViewer;assembly=NlogViewer"
         mc:Ignorable="d"
+        Loaded="MainWindow_Loaded"
+        Closed="MainWindow_Closed"
         Title="GAFA" Height="350" Width="525">
     <Grid>
         <Grid.ColumnDefinitions>
@@ -21,7 +23,8 @@
             <Button Margin="10" Grid.Row="1" Content="Unmount" Click="Unmount_Click"/>
         </Grid>
         <Grid Grid.Column="1">
-            <nlog:NlogViewer x:Name="logCtrl" TimeWidth="AUTO" LoggerNameWidth="0" LevelWidth="auto" ExceptionWidth="auto" MessageWidth="auto" />
+            <RichTextBox x:Name="logRichTextBox" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+
         </Grid>
         
     </Grid>

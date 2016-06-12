@@ -15,6 +15,10 @@ using System.Windows.Shapes;
 using Gafa.Dokan;
 using Gafa.Patterns;
 using Gafa.FileSystem;
+using Gafa.Helper;
+using NLog.Targets.Wrappers;
+using NLog;
+using NLog.Config;
 
 namespace Gafa
 {
@@ -23,6 +27,30 @@ namespace Gafa
 	/// </summary>
 	public partial class MainWindow : Window
 	{
+		public void MainWindow_Loaded(object sender, RoutedEventArgs e)
+		{
+			Dispatcher.Invoke(() =>
+			{
+				var target = new WpfRichTextBoxTarget
+				{
+					Name = "RichText",
+					Layout =
+						"[${time:useUTC=false}] ${level:uppercase=true} ${callsite}::${message} ${exception:innerFormat=tostring:maxInnerExceptionLevel=10:separator=,:format=tostring}",
+					ControlName = logRichTextBox.Name,
+					FormName = GetType().Name,
+					AutoScroll = true,
+					MaxLines = 100000,
+					UseDefaultRowColoringRules = true,
+				};
+				var asyncWrapper = new AsyncTargetWrapper { Name = "RichTextAsync", WrappedTarget = target };
+
+				LogManager.Configuration.AddTarget(asyncWrapper.Name, asyncWrapper);
+				LogManager.Configuration.LoggingRules.Insert(0, new LoggingRule("*", LogLevel.Trace, asyncWrapper));
+				LogManager.ReconfigExistingLoggers();
+
+			});
+		}
+
 		public MainWindow()
 		{
 			InitializeComponent();
