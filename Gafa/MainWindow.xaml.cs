@@ -15,6 +15,8 @@ namespace Gafa
 	/// </summary>
 	public partial class MainWindow : Window
 	{
+		bool m_HideDebug = false;
+
 		public void MainWindow_Loaded(object sender, RoutedEventArgs e)
 		{
 			Dispatcher.Invoke(() =>
@@ -72,5 +74,23 @@ namespace Gafa
 		{
 			Singleton<MountsList>.Instance.Unmount();
 		}
+
+		private void ResizeButton_Click(object sender, RoutedEventArgs e)
+		{
+			m_HideDebug = !m_HideDebug;
+			if(m_HideDebug)
+			{
+				WindowGrid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+				WindowGrid.ColumnDefinitions[2].Width = new GridLength(0);
+
+			}
+			else
+			{
+				WindowGrid.ColumnDefinitions[0].Width = new GridLength(100);
+				WindowGrid.ColumnDefinitions[2].Width = new GridLength(1, GridUnitType.Star);
+			}
+		}
+
+
 	}
 }

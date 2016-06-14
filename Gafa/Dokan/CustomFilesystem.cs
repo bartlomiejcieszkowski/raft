@@ -33,7 +33,7 @@ namespace Gafa.Dokan
 		{
 			new Thread(() =>
 			{
-				DokanNet.Dokan.Mount(this, GetMountpoint());
+				DokanNet.Dokan.Mount(this, GetMountpoint(), DokanOptions.FixedDrive, 14);
 			}).Start();
 		}
 

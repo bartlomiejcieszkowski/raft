@@ -1,5 +1,6 @@
 ﻿using DokanNet;
 using Gafa.Logging;
+using NLog.Fluent;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,7 +8,7 @@ using System.Linq;
 
 namespace Gafa.FileSystem
 {
-	public abstract class SubFolderHandler : Logger
+	public abstract partial class SubFolderHandler : Logger, ISubFolderHandler
 	{
 		protected string m_Subfolder;
 
@@ -33,7 +34,7 @@ namespace Gafa.FileSystem
 				{Handler.m_Subfolder, Handler }
 			};
 
-			
+
 			Log.Log(Default, LogExit);
 		}
 
@@ -70,7 +71,17 @@ namespace Gafa.FileSystem
 			Log.Log(Default, LogExit);
 		}
 
-		public abstract NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null);
+		protected SubFolderHandler GetRedirection(string path)
+		{
+			SubFolderHandler handler;
+			if (!m_Handlers.TryGetValue(path, out handler))
+			{
+				if (!m_Handlers.TryGetValue("*", out handler))
+				{
+					return null;
+				}
+			}
+			return handler;
+		}
 	}
-
 }

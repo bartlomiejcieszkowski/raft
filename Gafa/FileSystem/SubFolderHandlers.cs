@@ -1,5 +1,6 @@
 ﻿using DokanNet;
 using Gafa.GitToFileSystem;
+using Gafa.Patterns;
 using LibGit2Sharp;
 using System;
 using System.Collections.Generic;
@@ -21,26 +22,151 @@ namespace Gafa.FileSystem
 			return repository.Branches.Single(b => b.FriendlyName.Equals(lSubfolder)) != null;
 		}
 
-		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		public override NtStatus GetFileInformation(ref Queue<string> filePath, ref FileInformation fileInfo, DokanFileInfo info, params object[] args)
 		{
 			Log.Log(Default, LogEnter);
-			if (!(UnkObject is Tree))
+
+			if (!args.RequiredArgs(typeof(Tree), typeof(Commit)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var tree = args.GetArg<Tree>();
+			var commit = args.GetArg<Commit>();
+
+			if (filePath.Count == 0)
 			{
 				return NtStatus.Error;
 			}
 
-			if (!(UnkObject2 is Commit))
+			var treeEntry = GetTreeEntry(ref filePath, tree);
+			if (null == treeEntry)
 			{
 				return NtStatus.Error;
 			}
 
-			var tree = UnkObject as Tree;
-			var commit = UnkObject2 as Commit;
-
-			while (filePath.Count != 0)
+			if (null == treeEntry.Target)
 			{
-				var currentPath = filePath.Dequeue();
-				var treeEntry = tree.Single(te => te.TargetType == TreeEntryTargetType.Tree && te.Name.Equals(currentPath));
+				return NtStatus.Error;
+			}
+
+			fileInfo.FileName = filePath.Dequeue();
+			fileInfo.Attributes = treeEntry.Mode.Convert();
+			fileInfo.CreationTime = commit.Committer.When.UtcDateTime;
+			fileInfo.LastWriteTime = commit.Committer.When.UtcDateTime;
+			fileInfo.LastAccessTime = commit.Committer.When.UtcDateTime;
+			fileInfo.Length = treeEntry.TargetType == TreeEntryTargetType.Blob ? (treeEntry.Target as Blob).Size : 0;
+
+			Log.Log(Default, LogExit);
+			return DokanResult.Success;
+		}
+
+		public override NtStatus ReadFile(ref Queue<string> filePath, byte[] buffer, ref int bytesRead, long offset, DokanFileInfo info, params object[] args)
+		{
+			Log.Log(Default, LogEnter);
+
+			if (!args.RequiredArgs(typeof(Tree), typeof(Commit)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var tree = args.GetArg<Tree>();
+			var commit = args.GetArg<Commit>();
+
+			if (filePath.Count == 0)
+			{
+				return NtStatus.Error;
+			}
+
+			var treeEntry = GetTreeEntry(ref filePath, tree);
+			if (null == treeEntry)
+			{
+				return NtStatus.Error;
+			}
+
+			if (null == treeEntry.Target)
+			{
+				return NtStatus.Error;
+			}
+
+			if (TreeEntryTargetType.Blob != treeEntry.TargetType)
+			{
+				return NtStatus.Error;
+			}
+
+			var blob = treeEntry.Target as Blob;
+
+			var contentStream = blob.GetContentStream();
+			contentStream.Position = offset;
+			
+			using (var br = new BinaryReader(contentStream))
+			{
+				int bytesLeft =  (int)(contentStream.Length - contentStream.Position);
+				bytesRead = bytesLeft > buffer.Length ? buffer.Length : bytesLeft;
+				br.Read(buffer, 0, bytesRead);
+				//br.ReadBytes(bytesRead);
+			}
+
+			Log.Log(Default, LogExit);
+			return NtStatus.Success;
+		}
+
+		private TreeEntry GetTreeEntry(ref Queue<string> filePath, params object[] args)
+		{
+			if (!args.RequiredArgs(typeof(Tree)))
+			{
+				Log.Error("Missing required args.");
+				return null;
+			}
+
+			var tree = args.GetArg<Tree>();
+
+			if(filePath.Count == 0)
+			{
+				return null;
+			}
+
+			while (filePath.Count > 1)
+			{
+				var descendPath = filePath.Dequeue();
+				var treeEntry = tree.Single(te => te.TargetType == TreeEntryTargetType.Tree && te.Name.Equals(descendPath));
+				if(null == treeEntry)
+				{
+					return null;
+				}
+
+				if(null == treeEntry)
+				{
+					return null;
+				}
+
+				tree = treeEntry.Target as Tree;
+			}
+
+			var currentPath = filePath.Peek();
+			return tree.Single(te => te.Name.Equals(currentPath));
+
+		}
+
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, params object[] args)
+		{
+			Log.Log(Default, LogEnter);
+
+
+			if (!args.RequiredArgs(typeof(Tree), typeof(Commit)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var tree = args.GetArg<Tree>();
+			var commit = args.GetArg<Commit>();
+
+			if(filePath.Count > 0)
+			{
+				var treeEntry = GetTreeEntry(ref filePath, tree);
 				if (null == treeEntry)
 				{
 					return NtStatus.Error;
@@ -63,7 +189,8 @@ namespace Gafa.FileSystem
 					CreationTime = commit.Committer.When.UtcDateTime,
 					LastWriteTime = commit.Committer.When.UtcDateTime,
 					LastAccessTime = commit.Committer.When.UtcDateTime,
-				};
+					Length = treeEntry.TargetType == TreeEntryTargetType.Blob ? (treeEntry.Target as Blob).Size : 0,
+			};
 				files.Add(treeEntryInformation);
 			}
 
@@ -84,17 +211,101 @@ namespace Gafa.FileSystem
 			return repository.Branches.Single(b => b.FriendlyName.Equals(lSubfolder)) != null;
 		}
 
-
-
-		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		public override NtStatus GetFileInformation(ref Queue<string> filePath, ref FileInformation fileInfo, DokanFileInfo info, params object[] args)
 		{
 			Log.Log(Default, LogEnter);
-			if (!(UnkObject is Repository))
+
+			if (!args.RequiredArgs(typeof(Repository)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var repository = args.GetArg<Repository>();
+
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref currentPath))
 			{
 				return NtStatus.Error;
 			}
 
-			var repository = UnkObject as Repository;
+			var currentBranch = repository.Branches.Single(b => b.FriendlyName.Equals(currentPath));
+
+			if (filePath.Count != 0)
+			{
+				SubFolderHandler handler = GetRedirection(filePath.Peek());
+				if (null == handler)
+				{
+					return NtStatus.Error;
+				}
+
+				return handler.GetFileInformation(ref filePath, ref fileInfo, info, currentBranch.Tip.Tree, currentBranch.Tip);
+			}
+
+
+
+			fileInfo.FileName = currentPath;
+
+			var firstCommit = repository.Commits.QueryBy(new CommitFilter() { SortBy = CommitSortStrategies.Reverse | CommitSortStrategies.Time }).GetEnumerator().Current;
+
+			fileInfo.Attributes = FileAttributes.Directory;
+			fileInfo.LastAccessTime = firstCommit.Committer.When.UtcDateTime; // @TODO: Add more sense
+			fileInfo.LastWriteTime = firstCommit.Committer.When.UtcDateTime;
+			fileInfo.CreationTime = firstCommit.Committer.When.UtcDateTime;
+
+			Log.Log(Default, LogExit);
+			return DokanResult.Success;
+		}
+
+		public override NtStatus ReadFile(ref Queue<string> filePath, byte[] buffer, ref int bytesRead, long offset, DokanFileInfo info, params object[] args)
+		{
+			Log.Log(Default, LogEnter);
+
+			if (!args.RequiredArgs(typeof(Repository)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var repository = args.GetArg<Repository>();
+
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref repository, ref currentPath))
+			{
+				return NtStatus.Error;
+			}
+
+			if (filePath.Count == 0)
+			{
+				return NtStatus.Error;
+			}
+
+			var currentBranch = repository.Branches.Single(b => b.FriendlyName.Equals(currentPath));
+
+			SubFolderHandler handler;
+			if (!m_Handlers.TryGetValue("*", out handler))
+			{
+				return NtStatus.Error;
+			}
+
+
+			var status = handler.ReadFile(ref filePath, buffer, ref bytesRead, offset, info, currentBranch.Tip.Tree, currentBranch.Tip);
+			Log.Log(Default, LogExit);
+			return status;
+		}
+
+
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, params object[] args)
+		{
+			Log.Log(Default, LogEnter);
+
+			if (!args.RequiredArgs(typeof(Repository)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var repository = args.GetArg<Repository>();
 
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref repository, ref currentPath))
@@ -113,8 +324,9 @@ namespace Gafa.FileSystem
 				return NtStatus.Error;
 			}
 			//}
+			var status = handler.FindFiles(ref filePath, ref files, info, currentBranch.Tip.Tree, currentBranch.Tip);
 			Log.Log(Default, LogExit);
-			return handler.FindFiles(ref filePath, ref files, info, currentBranch.Tip.Tree, currentBranch.Tip);
+			return status;
 		}
 	}
 
@@ -124,15 +336,98 @@ namespace Gafa.FileSystem
 		public BranchesHandler(string Subfolder, SubFolderHandler Handler) : base(Subfolder, Handler) { }
 		public BranchesHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
-		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		public override NtStatus GetFileInformation(ref Queue<string> filePath, ref FileInformation fileInfo, DokanFileInfo info, params object[] args)
 		{
 			Log.Log(Default, LogEnter);
-			if (!(UnkObject is Repository))
+
+			if (!args.RequiredArgs(typeof(Repository)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var repository = args.GetArg<Repository>();
+
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref currentPath))
 			{
 				return NtStatus.Error;
 			}
 
-			var repository = UnkObject as Repository;
+
+			if (filePath.Count != 0)
+			{
+				SubFolderHandler handler = GetRedirection(filePath.Peek());
+				if (null == handler)
+				{
+					return NtStatus.Error;
+				}
+
+				return handler.GetFileInformation(ref filePath, ref fileInfo, info, args);
+			}
+
+
+
+			fileInfo.FileName = currentPath;
+
+			var firstCommit = repository.Commits.QueryBy(new CommitFilter() { SortBy = CommitSortStrategies.Reverse | CommitSortStrategies.Time }).GetEnumerator().Current;
+
+			fileInfo.Attributes = FileAttributes.Directory;
+			fileInfo.LastAccessTime = firstCommit.Committer.When.UtcDateTime; // @TODO: Add more sense
+			fileInfo.LastWriteTime = firstCommit.Committer.When.UtcDateTime;
+			fileInfo.CreationTime = firstCommit.Committer.When.UtcDateTime;
+
+			Log.Log(Default, LogExit);
+			return DokanResult.Success;
+		}
+
+		public override NtStatus ReadFile(ref Queue<string> filePath, byte[] buffer, ref int bytesRead, long offset, DokanFileInfo info, params object[] args)
+		{
+			Log.Log(Default, LogEnter);
+			if (!args.RequiredArgs(typeof(Repository)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var repository = args.GetArg<Repository>();
+
+			var currentPath = filePath.Dequeue();
+			if (!IsSubfolder(ref currentPath))
+			{
+				return NtStatus.Error;
+			}
+
+			if (filePath.Count == 0)
+			{
+				return NtStatus.Error;
+			}
+
+			SubFolderHandler handler;
+			if (!m_Handlers.TryGetValue(filePath.Peek(), out handler))
+			{
+				if (!m_Handlers.TryGetValue("*", out handler))
+				{
+					return NtStatus.Error;
+				}
+			}
+
+			var status = handler.ReadFile(ref filePath, buffer, ref bytesRead, offset, info, args);
+			Log.Log(Default, LogExit);
+			return status;
+		}
+
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, params object[] args)
+		{
+			Log.Log(Default, LogEnter);
+
+			if (!args.RequiredArgs(typeof(Repository)))
+			{
+				Log.Error("Missing required args.");
+				return NtStatus.Error;
+			}
+
+			var repository = args.GetArg<Repository>();
 
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref currentPath))
@@ -153,7 +448,7 @@ namespace Gafa.FileSystem
 					}
 				}
 
-				return handler.FindFiles(ref filePath, ref files, info, UnkObject);
+				return handler.FindFiles(ref filePath, ref files, info, args[0]);
 			}
 
 			AddHandlersAsSubfolders(ref files);
@@ -182,15 +477,22 @@ namespace Gafa.FileSystem
 		public TagHandler(string Subfolder, SubFolderHandler Handler) : base(Subfolder, Handler) { }
 		public TagHandler(string Subfolder, IEnumerable<SubFolderHandler> Handlers) : base(Subfolder, Handlers) { }
 
-		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
+		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, params object[] args)
 		{
 			Log.Log(Default, LogEnter);
-			if (!(UnkObject is Repository))
+
+			if (args.Length < 1)
+			{
+				Log.Error("Invalid length {0}.", args.Length);
+				return NtStatus.Error;
+			}
+
+			if (!(args[0] is Repository))
 			{
 				return NtStatus.Error;
 			}
 
-			var repository = UnkObject as Repository;
+			var repository = args[0] as Repository;
 
 			var currentPath = filePath.Dequeue();
 			if (!IsSubfolder(ref currentPath))
@@ -245,65 +547,4 @@ namespace Gafa.FileSystem
 
 		}
 	}
-
-	public class RootHandler : SubFolderHandler
-	{
-		private string m_RepositoryPath;
-		public RootHandler(string Subfolder, string RepositoryPath) : base(Subfolder)
-		{
-			Log.Log(Default, LogEnter);
-			m_RepositoryPath = RepositoryPath;
-			m_Handlers.Add(m_Subfolder, this);
-			Log.Log(Default, LogExit);
-		}
-
-		public RootHandler(string Subfolder, string RepositoryPath, SubFolderHandler Handler) : base(Subfolder, Handler)
-		{
-			Log.Log(Default, LogEnter);
-			m_RepositoryPath = RepositoryPath;
-			m_Handlers.Add(m_Subfolder, this);
-			Log.Log(Default, LogExit);
-		}
-
-		public RootHandler(string Subfolder, string RepositoryPath, IEnumerable<SubFolderHandler> Handlers) : base(
-			Subfolder, Handlers)
-		{
-			Log.Log(Default, LogEnter);
-			m_RepositoryPath = RepositoryPath;
-			m_Handlers.Add(m_Subfolder, this);
-			Log.Log(Default, LogExit);
-		}
-
-
-		public override NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, Object UnkObject, Object UnkObject2 = null)
-		{
-			Log.Log(Default, LogEnter);
-			var currentPath = filePath.Dequeue();
-			if (!IsSubfolder(ref currentPath))
-			{
-				return NtStatus.Error;
-			}
-
-
-			if (filePath.Count != 0)
-			{
-				SubFolderHandler handler;
-				if (!m_Handlers.TryGetValue(filePath.Peek(), out handler))
-				{
-					if (!m_Handlers.TryGetValue("*", out handler))
-					{
-						return NtStatus.Error;
-					}
-				}
-
-				return handler.FindFiles(ref filePath, ref files, info, UnkObject, UnkObject2);
-			}
-
-			AddHandlersAsSubfolders(ref files);
-			Log.Log(Default, LogExit);
-			return DokanResult.Success;
-		}
-	}
-
-
 }

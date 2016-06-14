@@ -15,8 +15,10 @@
 			Log = NLog.LogManager.GetLogger(GetType().FullName);
 		}
 
+		protected static NLog.LogLevel NotImplemented = NLog.LogLevel.Trace;
 		protected static NLog.LogLevel Default = NLog.LogLevel.Debug;
 		protected const string LogEnter = "Enter.";
 		protected const string LogExit = "Exit.";
+		protected const string LogNotImplemented = "Not implemented.";
 	}
 }

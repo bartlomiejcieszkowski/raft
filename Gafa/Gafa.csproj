@@ -88,7 +88,9 @@
     <Compile Include="FileSystem\IFileSystem.cs" />
     <Compile Include="FileSystem\ISubFolderHandler.cs" />
     <Compile Include="FileSystem\MountsList.cs" />
+    <Compile Include="FileSystem\RootHandler.cs" />
     <Compile Include="FileSystem\SubFolderHandler.cs" />
+    <Compile Include="FileSystem\SubFolderHandler.ISubFolderHandler.cs" />
     <Compile Include="FileSystem\SubFolderHandlers.cs" />
     <Compile Include="GitToFileSystem\Helpers.cs" />
     <Compile Include="Helper\WpfRichTextBoxRowColoringRule.cs" />

@@ -9,10 +9,11 @@
         Loaded="MainWindow_Loaded"
         Closed="MainWindow_Closed"
         Title="GAFA" Height="350" Width="525">
-    <Grid>
+    <Grid Name="WindowGrid">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="1*"></ColumnDefinition>
-            <ColumnDefinition Width="1*"></ColumnDefinition>
+            <ColumnDefinition Width="100"></ColumnDefinition>
+            <ColumnDefinition Width="5"></ColumnDefinition>
+            <ColumnDefinition Width="1*"/>
         </Grid.ColumnDefinitions>
         <Grid Grid.Column="0">
             <Grid.RowDefinitions>
@@ -22,10 +23,12 @@
             <Button Margin="10" Grid.Row="0" Content="Mount" Click="Mount_Click"/>
             <Button Margin="10" Grid.Row="1" Content="Unmount" Click="Unmount_Click"/>
         </Grid>
-        <Grid Grid.Column="1">
+        <Button Grid.Column="1" Click="ResizeButton_Click" />
+
+        <Grid Grid.Column="2" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
             <RichTextBox x:Name="logRichTextBox" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
 
         </Grid>
-        
+
     </Grid>
 </Window>
