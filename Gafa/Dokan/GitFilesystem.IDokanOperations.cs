@@ -34,12 +34,8 @@ namespace Gafa.Dokan
 			fileInfo = new FileInformation();
 
 			return m_Handler.GetFileInformation(ref filePath, ref fileInfo, info, m_Repository);
-
-			fileInfo = new FileInformation();
-			
-
-			return DokanResult.Success;
 		}
+
 
 
 		public void Cleanup(string fileName, DokanFileInfo info)
@@ -54,7 +50,7 @@ namespace Gafa.Dokan
 
 		public NtStatus CreateFile(string fileName, DokanNet.FileAccess access, FileShare share, FileMode mode, FileOptions options, FileAttributes attributes, DokanFileInfo info)
 		{
-			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
+			Log.Log(Default, "FileName: {0} DokanInfo: {1} Access: {2} Share: {3} Mode: {4} Options: {5} Attributes: {6}", fileName, info.ToStringDokanFileInfo(), access.ToString(), share.ToString(), mode.ToString(), options.ToString(), attributes.ToString());
 			if (info.IsDirectory && mode == FileMode.CreateNew)
 			{
 				return DokanResult.AccessDenied;
