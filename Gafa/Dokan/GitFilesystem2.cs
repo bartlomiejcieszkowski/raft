@@ -1,5 +1,6 @@
 ﻿using DokanNet;
 using Gafa.Dokan;
+using Gafa.FileSystem;
 using LibGit2Sharp;
 using System;
 using System.Collections;
@@ -50,7 +51,7 @@ namespace Gafa.Dokan
 		{
 			return tag.PeeledTarget as Commit;
 		}
-		
+
 
 		//public static object Descend(this Tree tree, st)
 		//{
@@ -58,7 +59,7 @@ namespace Gafa.Dokan
 		//}
 	}
 
-	
+
 
 	public class GitFileEntry
 	{
@@ -78,9 +79,12 @@ namespace Gafa.Dokan
 
 	public partial class GitFilesystem2 : Logging.Logger
 	{
+		private FilesystemInformation m_FilesystemInformation;
+		private ISubFolderHandler m_Handler;
 		private Repository m_Repository;
-		
-		public GitFilesystem2(string mountPoint, string repositoryPath) : base()
+		private string m_RepositoryPath;
+
+		public GitFilesystem2(string mountPoint, string repositoryPath, ISubFolderHandler handler) : base()
 		{
 			Log.Trace(LogEnter);
 			m_FilesystemInformation = new FilesystemInformation()
@@ -90,7 +94,7 @@ namespace Gafa.Dokan
 				m_OpenTime = DateTime.UtcNow
 			};
 			m_RepositoryPath = repositoryPath;
-			m_Handler = Handler;
+			m_Handler = handler;
 			m_Repository = new Repository(m_RepositoryPath);
 			Log.Trace(LogExit);
 		}

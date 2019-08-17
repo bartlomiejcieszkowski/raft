@@ -19,11 +19,6 @@ namespace Gafa.Dokan
 		public string m_Folderpath;
 	}
 
-
-
-
-
-
 	public class CustomFilesystem : FolderEntry, IFileSystem, IDokanOperations
 	{
 		DateTime OpenTime;
@@ -127,7 +122,7 @@ namespace Gafa.Dokan
 
 		public NtStatus FindFiles(string fileName, out IList<FileInformation> files, DokanFileInfo info)
 		{
-			
+
 			files = new List<FileInformation>();
 			DirectoryInfo dirInfo = new DirectoryInfo(Path.Combine(m_Folderpath, fileName.TrimStart('\\')));
 			//if(fileName == @"\")
