@@ -85,6 +85,8 @@
     <Compile Include="Dokan\CustomFilesystem.cs" />
     <Compile Include="Dokan\GitFilesystem.IDokanOperations.cs" />
     <Compile Include="Dokan\GitFilesystem.cs" />
+    <Compile Include="Dokan\GitFilesystem2.cs" />
+    <Compile Include="Dokan\GitFilesystem2.IDokanOperations.cs" />
     <Compile Include="FileSystem\IFileSystem.cs" />
     <Compile Include="FileSystem\ISubFolderHandler.cs" />
     <Compile Include="FileSystem\MountsList.cs" />
@@ -122,6 +124,7 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <None Include="ClassDiagram.cd" />
     <None Include="Graph.dgml" />
     <Resource Include="Helper\README_NLog_WpfRichTextBox.txt" />
     <Content Include="NLog.config">

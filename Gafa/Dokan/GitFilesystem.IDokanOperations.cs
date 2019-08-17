@@ -10,8 +10,41 @@ using System.Security.AccessControl;
 
 namespace Gafa.Dokan
 {
+
+	public static class GitFilesystemExtensions
+	{
+		
+	}
+
 	public partial class GitFilesystem : Logger, IFileSystem, IDokanOperations
 	{
+		private Tuple<PathType, string> ParsePath(string fileName, params object[] args)
+		{
+			var firstSeparator = fileName.IndexOf(Path.DirectorySeparatorChar);
+			if (-1 == firstSeparator)
+			{
+				return null;
+			}
+
+			char[] array = { Path.DirectorySeparatorChar };
+			var splittedPath = fileName.Split(array, 3);
+
+
+			if (2 > splittedPath.Length)
+			{
+				Log.Error("Invalid path: {0}.", fileName);
+				return null;
+			}
+
+			var pathType = splittedPath[1].ToPathType();
+			if (PathType.unknown == pathType)
+			{
+				Log.Error("Unknown subfolder: {0}.", splittedPath[1]);
+				return null;
+			}
+
+			return new Tuple<PathType, string>(pathType, splittedPath.Length > 2 ? splittedPath[2] : null);
+		}
 
 		public NtStatus Mounted(DokanFileInfo info)
 		{
@@ -30,10 +63,10 @@ namespace Gafa.Dokan
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
 			info.TryResetTimeout(1000 * 60 * 5);
-			var filePath = fileName.PathToQueue();
+			var tuple = ParsePath(fileName);
 			fileInfo = new FileInformation();
 
-			return m_Handler.GetFileInformation(ref filePath, ref fileInfo, info, m_Repository);
+			return m_Handler.GetFileInformation(tuple.Item2, ref fileInfo, info, m_Repository);
 		}
 
 
@@ -75,25 +108,25 @@ namespace Gafa.Dokan
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
 			info.TryResetTimeout(1000 * 60 * 5);
 			files = new List<FileInformation>();
-			var filePath = fileName.PathToQueue();
+			var tuple = ParsePath(fileName);
 
-			return m_Handler.FindFiles(ref filePath, ref files, info, m_Repository);
+			return m_Handler.FindFiles(tuple.Item2, ref files, info, m_Repository);
 		}
 
 		public NtStatus FindStreams(string fileName, out IList<FileInformation> streams, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
 			streams = new List<FileInformation>();
-			var filePath = fileName.PathToQueue();
+			var tuple = ParsePath(fileName);
 
-			return m_Handler.FindStreams(ref filePath, ref streams, info, m_Repository);
+			return m_Handler.FindStreams(tuple.Item2, ref streams, info, m_Repository);
 		}
 
 		public NtStatus FlushFileBuffers(string fileName, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.FlushFileBuffers(ref filePath, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.FlushFileBuffers(tuple.Item2, info, m_Repository);
 		}
 
 		public NtStatus GetDiskFreeSpace(out long freeBytesAvailable, out long totalNumberOfBytes, out long totalNumberOfFreeBytes, DokanFileInfo info)
@@ -117,8 +150,8 @@ namespace Gafa.Dokan
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
 			security = null;
-			var filePath = fileName.PathToQueue();
-			return m_Handler.GetFileSecurity(ref filePath, ref security, sections, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.GetFileSecurity(tuple.Item2, ref security, sections, info, m_Repository);
 		}
 
 		public NtStatus GetVolumeInformation(out string volumeLabel, out FileSystemFeatures features, out string fileSystemName, DokanFileInfo info)
@@ -134,8 +167,8 @@ namespace Gafa.Dokan
 		public NtStatus LockFile(string fileName, long offset, long length, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.LockFile(ref filePath, offset, length, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.LockFile(tuple.Item2, offset, length, info, m_Repository);
 		}
 
 		public NtStatus MoveFile(string oldName, string newName, bool replace, DokanFileInfo info)
@@ -150,60 +183,60 @@ namespace Gafa.Dokan
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
 			info.TryResetTimeout(1000 * 60 * 5);
-			var filePath = fileName.PathToQueue();
+			var tuple = ParsePath(fileName);
 			bytesRead = 0;
-			return m_Handler.ReadFile(ref filePath, buffer, ref bytesRead, offset, info, m_Repository);
+			return m_Handler.ReadFile(tuple.Item2, buffer, ref bytesRead, offset, info, m_Repository);
 
 		}
 
 		public NtStatus SetAllocationSize(string fileName, long length, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.SetAllocationSize(ref filePath, length, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.SetAllocationSize(tuple.Item2, length, info, m_Repository);
 		}
 
 		public NtStatus SetEndOfFile(string fileName, long length, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.SetEndOfFile(ref filePath, length, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.SetEndOfFile(tuple.Item2, length, info, m_Repository);
 		}
 
 		public NtStatus SetFileAttributes(string fileName, FileAttributes attributes, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.SetFileAttributes(ref filePath, attributes, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.SetFileAttributes(tuple.Item2, attributes, info, m_Repository);
 		}
 
 		public NtStatus SetFileSecurity(string fileName, FileSystemSecurity security, AccessControlSections sections, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.SetFileSecurity(ref filePath, security, sections, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.SetFileSecurity(tuple.Item2, security, sections, info, m_Repository);
 		}
 
 		public NtStatus SetFileTime(string fileName, DateTime? creationTime, DateTime? lastAccessTime, DateTime? lastWriteTime, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.SetFileTime(ref filePath, creationTime, lastAccessTime, lastWriteTime, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.SetFileTime(tuple.Item2, creationTime, lastAccessTime, lastWriteTime, info, m_Repository);
 		}
 
 		public NtStatus UnlockFile(string fileName, long offset, long length, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
-			return m_Handler.UnlockFile(ref filePath, offset, length, info, m_Repository);
+			var tuple = ParsePath(fileName);
+			return m_Handler.UnlockFile(tuple.Item2, offset, length, info, m_Repository);
 		}
 
 		public NtStatus WriteFile(string fileName, byte[] buffer, out int bytesWritten, long offset, DokanFileInfo info)
 		{
 			Log.Log(Default, "FileName: {0} DokanInfo: {1}", fileName, info.ToStringDokanFileInfo());
-			var filePath = fileName.PathToQueue();
+			var tuple = ParsePath(fileName);
 			bytesWritten = 0;
-			return m_Handler.WriteFile(ref filePath, buffer, ref bytesWritten, offset, info, m_Repository);
+			return m_Handler.WriteFile(tuple.Item2, buffer, ref bytesWritten, offset, info, m_Repository);
 		}
 	}
 

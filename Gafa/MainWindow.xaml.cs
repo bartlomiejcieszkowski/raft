@@ -49,15 +49,15 @@ namespace Gafa
 			//Singleton<MountsList>.Instance.Add(new CustomFilesystem(@"U:\", @"C:\Temp"));
 			var treeHandler = new TreeHandler("*");
 			var repositoryPath = @"Z:\Development\Gafa";
-			Singleton<MountsList>.Instance.m_FileSystems.Add(
-				new GitFilesystem(
-					@"Y:\",
-					@"Z:\Development\Gafa",
-					new RootHandler("", repositoryPath, new List<SubFolderHandler>()
-					{
-						new BranchesHandler("branches", new BranchHandler("*", treeHandler)),
-						new TagHandler("tags", treeHandler)
-					})));
+			//Singleton<MountsList>.Instance.m_FileSystems.Add(
+			//	new GitFilesystem(
+			//		@"Y:\",
+			//		@"Z:\Development\Gafa",
+			//		new RootHandler("", repositoryPath, new List<SubFolderHandler>()
+			//		{
+			//			new BranchesHandler("branches", new BranchHandler("*", treeHandler)),
+			//			new TagHandler("tags", treeHandler)
+			//		})));
 		}
 
 		private void Mount_Click(object sender, RoutedEventArgs e)

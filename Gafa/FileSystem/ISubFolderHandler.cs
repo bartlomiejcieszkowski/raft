@@ -11,29 +11,29 @@ namespace Gafa.FileSystem
 {
 	public interface ISubFolderHandler
 	{
-		void Cleanup(ref Queue<string> filePath, DokanFileInfo info, params object[] list);
-		void CloseFile(ref Queue<string> filePath, DokanFileInfo info, params object[] list);
-		NtStatus CreateFile(ref Queue<string> filePath, DokanNet.FileAccess access, FileShare share, FileMode mode, FileOptions options, FileAttributes attributes, DokanFileInfo info, params object[] list);
-		NtStatus DeleteDirectory(ref Queue<string> filePath, DokanFileInfo info, params object[] list);
-		NtStatus DeleteFile(ref Queue<string> filePath, DokanFileInfo info, params object[] list);
-		NtStatus FindFiles(ref Queue<string> filePath, ref IList<FileInformation> files, DokanFileInfo info, params object[] list);
-		NtStatus FindStreams(ref Queue<string> filePath, ref IList<FileInformation> streams, DokanFileInfo info, params object[] list);
-		NtStatus FlushFileBuffers(ref Queue<string> filePath, DokanFileInfo info, params object[] list);
+		void Cleanup(string fileName, DokanFileInfo info, params object[] list);
+		void CloseFile(string fileName, DokanFileInfo info, params object[] list);
+		NtStatus CreateFile(string fileName, DokanNet.FileAccess access, FileShare share, FileMode mode, FileOptions options, FileAttributes attributes, DokanFileInfo info, params object[] list);
+		NtStatus DeleteDirectory(string fileName, DokanFileInfo info, params object[] list);
+		NtStatus DeleteFile(string fileName, DokanFileInfo info, params object[] list);
+		NtStatus FindFiles(string fileName, ref IList<FileInformation> files, DokanFileInfo info, params object[] list);
+		NtStatus FindStreams(string fileName, ref IList<FileInformation> streams, DokanFileInfo info, params object[] list);
+		NtStatus FlushFileBuffers(string fileName, DokanFileInfo info, params object[] list);
 		NtStatus GetDiskFreeSpace(ref long freeBytesAvailable, ref long totalNumberOfBytes, ref long totalNumberOfFreeBytes, DokanFileInfo info, params object[] list);
-		NtStatus GetFileInformation(ref Queue<string> filePath, ref FileInformation fileInfo, DokanFileInfo info, params object[] list);
-		NtStatus GetFileSecurity(ref Queue<string> filePath, ref FileSystemSecurity security, AccessControlSections sections, DokanFileInfo info, params object[] list);
+		NtStatus GetFileInformation(string fileName, ref FileInformation fileInfo, DokanFileInfo info, params object[] list);
+		NtStatus GetFileSecurity(string fileName, ref FileSystemSecurity security, AccessControlSections sections, DokanFileInfo info, params object[] list);
 		NtStatus GetVolumeInformation(ref string volumeLabel, ref FileSystemFeatures features, ref string fileSystemName, DokanFileInfo info, params object[] list);
-		NtStatus LockFile(ref Queue<string> filePath, long offset, long length, DokanFileInfo info, params object[] list);
+		NtStatus LockFile(string fileName, long offset, long length, DokanFileInfo info, params object[] list);
 		NtStatus Mounted(DokanFileInfo info, params object[] list);
 		NtStatus MoveFile(ref Queue<string> oldFilePath, ref Queue<string> newFilePath, bool replace, DokanFileInfo info, params object[] list);
-		NtStatus ReadFile(ref Queue<string> filePath, byte[] buffer, ref int bytesRead, long offset, DokanFileInfo info, params object[] list);
-		NtStatus SetAllocationSize(ref Queue<string> filePath, long length, DokanFileInfo info, params object[] list);
-		NtStatus SetEndOfFile(ref Queue<string> filePath, long length, DokanFileInfo info, params object[] list);
-		NtStatus SetFileAttributes(ref Queue<string> filePath, FileAttributes attributes, DokanFileInfo info, params object[] list);
-		NtStatus SetFileSecurity(ref Queue<string> filePath, FileSystemSecurity security, AccessControlSections sections, DokanFileInfo info, params object[] list);
-		NtStatus SetFileTime(ref Queue<string> filePath, DateTime? creationTime, DateTime? lastAccessTime, DateTime? lastWriteTime, DokanFileInfo info, params object[] list);
-		NtStatus UnlockFile(ref Queue<string> filePath, long offset, long length, DokanFileInfo info, params object[] list);
+		NtStatus ReadFile(string fileName, byte[] buffer, ref int bytesRead, long offset, DokanFileInfo info, params object[] list);
+		NtStatus SetAllocationSize(string fileName, long length, DokanFileInfo info, params object[] list);
+		NtStatus SetEndOfFile(string fileName, long length, DokanFileInfo info, params object[] list);
+		NtStatus SetFileAttributes(string fileName, FileAttributes attributes, DokanFileInfo info, params object[] list);
+		NtStatus SetFileSecurity(string fileName, FileSystemSecurity security, AccessControlSections sections, DokanFileInfo info, params object[] list);
+		NtStatus SetFileTime(string fileName, DateTime? creationTime, DateTime? lastAccessTime, DateTime? lastWriteTime, DokanFileInfo info, params object[] list);
+		NtStatus UnlockFile(string fileName, long offset, long length, DokanFileInfo info, params object[] list);
 		NtStatus Unmounted(DokanFileInfo info, params object[] list);
-		NtStatus WriteFile(ref Queue<string> filePath, byte[] buffer, ref int bytesWritten, long offset, DokanFileInfo info, params object[] list);
+		NtStatus WriteFile(string fileName, byte[] buffer, ref int bytesWritten, long offset, DokanFileInfo info, params object[] list);
 	}
 }
