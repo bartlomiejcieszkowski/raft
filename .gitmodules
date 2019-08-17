@@ -1,0 +1,4 @@
+[submodule "dependencies/libgit2"]
+	path = dependencies/libgit2
+	url = https://github.com/libgit2/libgit2.git
+	branch = maint/v0.28
