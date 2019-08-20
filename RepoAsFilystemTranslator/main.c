@@ -298,20 +298,22 @@ int main(int argc, char* argv[])
 	}
 
 	struct stat repoDirectory;
-	if (stat(argv[1], &repoDirectory) < 0)
+
+	// assume last arg as path to repo, and skip it for fuse
+	if (stat(argv[argc - 1], &repoDirectory) < 0)
 	{
-		LOG_ERROR("Directory %s doesn't exist", argv[1]);
+		LOG_ERROR("Directory %s doesn't exist", argv[argc - 1]);
 		ec = -1;
 		goto exit;
 	}
 	else if (!S_ISDIR(repoDirectory.st_mode))
 	{
-		LOG_ERROR("%s is not a directory", argv[1]);
+		LOG_ERROR("%s is not a directory", argv[argc - 1]);
 		ec = -1;
 		goto exit;
 	}
 
-	size_t dirname_len = strlen(argv[1]);
+	size_t dirname_len = strlen(argv[argc - 1]);
 
 	pCtx = (raft_context_s *)malloc(sizeof(raft_context_s) + dirname_len);
 	if (NULL == pCtx)
@@ -324,10 +326,12 @@ int main(int argc, char* argv[])
 	pCtx->repository_path.length = dirname_len;
 	pCtx->repository_path.buffer = (char*)&pCtx[1];
 
+	memcpy_s(pCtx->repository_path.buffer, pCtx->repository_path.length, argv[argc - 1], dirname_len);
+
 #ifdef linux
 	umask(0);
 #endif
-	fuse_main(argc, argv, &raft_operations, &pCtx);
+	fuse_main(argc-1, argv, &raft_operations, &pCtx);
 
 exit:
 	LOG_INFO("Shutting down: " PROGRAM_NAME);
