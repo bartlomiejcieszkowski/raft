@@ -12,242 +12,41 @@
 
 #include <git2.h>
 
-#include <fuse.h>
-#include <stdint.h>
+#include <dokan/dokan.h>
+#include <dokan/fileinfo.h>
+#include <malloc.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
-#ifdef linux
-#include <unistd.h>
-#endif
+#include <winbase.h>
+
 #include <fcntl.h>
 #include <sys/stat.h>
-#ifdef linux
-#include <dirent.h>
-#endif
 #include <errno.h>
-#ifdef linux
-#include <sys/time.h>
-#endif
-#ifdef HAVE_SETXATTR
-#include <sys/xattr.h>
-#endif
+
+#include "getopt.h"
+#include "raft_operations.h"
+
+#define LOG_NAME "main.c"
+#include "raft_log.h"
+
+//#define WIN10_ENABLE_LONG_PATH
+#ifdef WIN10_ENABLE_LONG_PATH
+//dirty but should be enough
+#define DOKAN_MAX_PATH 32768
+#else
+#define DOKAN_MAX_PATH MAX_PATH
+#endif // DEBUG
+
 
 #ifndef S_ISDIR
 #define	S_ISDIR(m)	(((m)&S_IFDIR) == S_IFDIR)
 #endif
 
-
 #define PROGRAM_NAME "RAFT - Repo As Filesystem Translator"
 
 #define IS_EC(ret) (ret < 0)
-
-/* Logging macros, for easy switch to file logging */
-
-#define EOL "\n"
-
-#define LOG_INFO(message, ...) printf(message EOL, ##__VA_ARGS__)
-#define LOG_ERROR(message, ...) fprintf(stderr, message EOL, ##__VA_ARGS__)
-
-static int raft_getattr(const char* path, struct FUSE_STAT * stbuf)
-{
-	return -1;
-}
-
-static int raft_access(const char* path, int mask)
-{
-	return -1;
-}
-
-static int raft_readlink(const char* path, char* buf, size_t size)
-{
-	return -1;
-}
-
-static int raft_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
-	FUSE_OFF_T offset, struct fuse_file_info *fi)
-{
-	return -1;
-}
-
-static int raft_mknod(const char* path, mode_t mode, dev_t rdev)
-{
-	return -1;
-}
-
-static int raft_mkdir(const char* path, mode_t mode)
-{
-	return -1;
-}
-
-static int raft_unlink(const char* path)
-{
-	return -1;
-}
-
-static int raft_rmdir(const char* path)
-{
-	return -1;
-}
-
-static int raft_symlink(const char* from, const char* to)
-{
-	return -1;
-}
-
-static int raft_rename(const char* from, const char* to)
-{
-	return -1;
-}
-
-static int raft_link(const char* from, const char* to)
-{
-	return -1;
-}
-
-static int raft_chmod(const char* path, mode_t mode)
-{
-	return -1;
-}
-
-static int raft_chown(const char* path, uid_t uid, gid_t gid)
-{
-	return -1;
-}
-
-static int raft_truncate(const char* path, FUSE_OFF_T size)
-{
-	return -1;
-}
-
-#ifdef HAVE_UTIMENSAT
-static int raft_utimens(const char* path, const struct timespec ts[2])
-{
-	return -1;
-}
-#endif
-
-static int raft_open(const char* path, struct fuse_file_info* fi)
-{
-	return -1;
-}
-
-static int raft_read(const char* path, char* buf, size_t size, FUSE_OFF_T offset,
-	struct fuse_file_info* fi)
-{
-	return -1;
-}
-
-static int raft_write(const char* path, const char* buf, size_t size,
-	FUSE_OFF_T offset, struct fuse_file_info* fi)
-{
-	return -1;
-}
-
-static int raft_statfs(const char* path, struct statvfs* stbuf)
-{
-	return -1;
-}
-
-static int raft_release(const char* path, struct fuse_file_info* fi)
-{
-	return -1;
-}
-
-static int raft_fsync(const char* path, int isdatasync,
-	struct fuse_file_info* fi)
-{
-	return -1;
-}
-
-#ifdef HAVE_POSIX_FALLOCATE
-static int raft_fallocate(const char* path, int mode,
-	FUSE_OFF_T offset, FUSE_OFF_T length, struct fuse_file_info* fi)
-{
-	return -1;
-}
-#endif
-
-#ifdef HAVE_SETXATTR
-static int raft_setxattr(const char* path, const char* name, const char* value,
-	size_t size, int flags)
-{
-	return -1;
-}
-
-static int raft_getxattr(const char* path, const char* name, char* value,
-	size_t size)
-{
-	return -1;
-}
-
-static int raft_listxattr(const char* path, char* list, size_t size)
-{
-	return -1;
-}
-
-static int raft_removexattr(const char* path, const char* name)
-{
-	return -1;
-}
-#endif
-
-
-static struct fuse_operations raft_operations = {
-	.getattr = raft_getattr,
-	.readlink = raft_readlink,
-	.getdir = NULL,
-	.mknod = raft_mknod,
-	.mkdir = raft_mkdir,
-	.unlink = raft_unlink,
-	.rmdir = raft_rmdir,
-	.symlink = raft_symlink,
-	.rename = raft_rename,
-	.link = raft_link,
-	.chmod = raft_chmod,
-	.chown = raft_chown,
-	.truncate = raft_truncate,
-	.utime = NULL,
-
-	.open = raft_open,
-	.read = raft_read,
-	.write = raft_write,
-	.statfs = raft_statfs,
-	.flush = NULL,
-	.release = raft_release,
-	.fsync = raft_fsync,
-#ifdef HAVE_SETXATTR
-	.setxattr = raft_setxattr,
-	.getxattr = raft_getxattr,
-	.listxattr = raft_listxattr,
-	.removexattr = raft_removexattr,
-#endif
-	.opendir = NULL,
-	.readdir = raft_readdir,
-	.releasedir = NULL,
-	.fsyncdir = NULL,
-	.init = NULL,
-	.destroy = NULL,
-	.access = raft_access,
-	.create = NULL, // if not implemneted mknod -> open
-	.ftruncate = NULL, // if not, truncate is called
-	.fgetattr = NULL,
-	.lock = NULL,
-#ifdef HAVE_UTIMENSAT
-	.utimens = raft_utimens,
-#endif
-	.bmap = NULL,
-#ifdef _WIN32
-	.win_get_attributes = NULL,
-	.win_set_attributes = NULL,
-	.win_set_times = NULL,
-#endif
-	
-	
-#ifdef HAVE_POSIX_FALLOCATE
-	.fallocate = raft_fallocate,
-#endif
-
-};
 
 #define DEFINE_BUFFER(type) \
 	struct buffer_##type { \
@@ -267,19 +66,41 @@ static struct fuse_operations raft_operations = {
 DEFINE_BUFFER(char);
 DEFINE_BUFFER_EMBEDDED(char);
 
+DEFINE_BUFFER(wchar_t);
+
 struct buffer {
 	size_t length;
 	
 };
 
 struct raft_context {
-	buffer_char_s repository_path;
+	DOKAN_OPERATIONS dokan_operations;
+	DOKAN_OPTIONS dokan_options;
+	buffer_wchar_t_s repository_path;
+	buffer_wchar_t_s mount_point;
 };
 
 typedef struct raft_context raft_context_s;
 
+void raft_set_dokan_options(PDOKAN_OPTIONS dokan_opt, PWCHAR mount_point)
+{
+	dokan_opt->Version = DOKAN_VERSION;
+	dokan_opt->ThreadCount = 0; // fine tune later
+	dokan_opt->MountPoint = mount_point;
+
+	dokan_opt->Options |= DOKAN_OPTION_DEBUG;
+	dokan_opt->Options |= DOKAN_OPTION_STDERR;
+
+	dokan_opt->Options |= DOKAN_OPTION_MOUNT_MANAGER;
+
+	dokan_opt->Timeout = 1000 * 60 * 5;
+
+}
+
 int main(int argc, char* argv[])
 {
+	raft_log_init();
+
 	raft_context_s* pCtx = NULL;
 	int ec = 0;
 
@@ -291,31 +112,38 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	if (argc < 2) {
-		LOG_ERROR("Not enough args");
-		ec = -1;
-		goto exit;
-	}
+	int opt;
 
-	struct stat repoDirectory;
-
-	// assume last arg as path to repo, and skip it for fuse
-	if (stat(argv[argc - 1], &repoDirectory) < 0)
+	char* repoPath = NULL;
+	char* mountPoint = NULL;
+	while ((opt = getopt(argc, argv, ":r:m:")) != -1)
 	{
-		LOG_ERROR("Directory %s doesn't exist", argv[argc - 1]);
-		ec = -1;
-		goto exit;
+		switch (opt)
+		{
+		case 'r':
+			repoPath = optarg;
+			break;
+		case 'm':
+			mountPoint = optarg;
+			break;
+		case ':':
+			LOG_ERROR("option missing value");
+			break;
+		}
 	}
-	else if (!S_ISDIR(repoDirectory.st_mode))
+
+	for (; optind < argc; optind++) {
+		LOG_INFO("Unparsed arg: %s", argv[optind]);
+	}
+
+	if (mountPoint == NULL || repoPath == NULL)
 	{
-		LOG_ERROR("%s is not a directory", argv[argc - 1]);
+		LOG_ERROR("Missing all necessary args.");
 		ec = -1;
 		goto exit;
 	}
 
-	size_t dirname_len = strlen(argv[argc - 1]);
-
-	pCtx = (raft_context_s *)malloc(sizeof(raft_context_s) + dirname_len);
+	pCtx = (raft_context_s*)malloc(sizeof(raft_context_s));
 	if (NULL == pCtx)
 	{
 		LOG_ERROR("Failed allocation of memory for ctx");
@@ -323,23 +151,58 @@ int main(int argc, char* argv[])
 		goto exit;
 	}
 
-	pCtx->repository_path.length = dirname_len;
-	pCtx->repository_path.buffer = (char*)&pCtx[1];
+	memset(pCtx, 0, sizeof(raft_context_s));
 
-	memcpy_s(pCtx->repository_path.buffer, pCtx->repository_path.length, argv[argc - 1], dirname_len);
+	struct stat repoStat;
 
-#ifdef linux
-	umask(0);
-#endif
-	fuse_main(argc-1, argv, &raft_operations, &pCtx);
+	// assume last arg as path to repo, and skip it for fuse
+	if (stat(repoPath, &repoStat) < 0)
+	{
+		LOG_ERROR("Directory %s doesn't exist", argv[argc - 1]);
+		ec = -1;
+		goto exit;
+	}
+	else if (!S_ISDIR(repoStat.st_mode))
+	{
+		LOG_ERROR("%s is not a directory", argv[argc - 1]);
+		ec = -1;
+		goto exit;
+	}
 
+	size_t repoPathLen = strlen(repoPath) + 1;
+
+	pCtx->repository_path.length = repoPathLen * 2;
+	pCtx->repository_path.buffer = (wchar_t*)malloc(repoPathLen * 2);
+
+	size_t converted = 0;
+	mbstowcs_s(&converted, pCtx->repository_path.buffer, repoPathLen,
+		repoPath, repoPathLen - 1);
+	
+	size_t mountPointLen = strlen(mountPoint) + 1;
+
+	pCtx->mount_point.length = mountPointLen * 2;
+	pCtx->mount_point.buffer = (wchar_t*)malloc(mountPointLen*2);
+
+	mbstowcs_s(&converted, pCtx->mount_point.buffer, mountPointLen,
+		mountPoint, mountPointLen - 1);
+
+	raft_set_dokan_options(&pCtx->dokan_options, pCtx->mount_point.buffer);
+	raft_set_dokan_operations(&pCtx->dokan_operations);
 exit:
 	LOG_INFO("Shutting down: " PROGRAM_NAME);
 	git_libgit2_shutdown();
 	
 	if (pCtx) {
+		if (pCtx->mount_point.buffer) {
+			free(pCtx->mount_point.buffer);
+		}
+
+		if (pCtx->repository_path.buffer) {
+			free(pCtx->repository_path.buffer);
+		}
 		free(pCtx);
 	}
 
+	raft_log_exit();
 	return ec;
 }
