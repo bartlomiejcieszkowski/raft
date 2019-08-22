@@ -106,7 +106,7 @@ bitmap_path_s get_offsets(wchar_t character, LPCWSTR wstring, int* count)
 	{
 		if (character == wstring[offset])
 		{
-			retVal.bitmap[offset / (sizeof(int) * 8)] |= offset % (sizeof(int) * 8);
+			retVal.bitmap[offset / (sizeof(int) * 8)] |= (1 << (offset % (sizeof(int) * 8)));
 			if (count) { *count += 1; }
 		}
 		++offset;
@@ -114,23 +114,23 @@ bitmap_path_s get_offsets(wchar_t character, LPCWSTR wstring, int* count)
 	return retVal;
 }
 
-int get_next_occurence(int offset, bitmap_path_s* bitmap_path)
+int get_next_occurence(int last_offset, bitmap_path_s* bitmap_path)
 {
 	if (NULL == bitmap_path) { return -2; }
 
-	if (offset < 0)
+	if (last_offset < 0)
 	{
-		offset = 0;
+		last_offset = 0;
 	}
 	else
 	{
-		++offset;
+		++last_offset;
 	}
 
-	while (offset < DOKAN_MAX_PATH)
+	while (last_offset < DOKAN_MAX_PATH)
 	{
-		int result = offset / (sizeof(int) * 8);
-		int modulo = offset % (sizeof(int) * 8);
+		int result = last_offset / (sizeof(int) * 8);
+		int modulo = last_offset % (sizeof(int) * 8);
 
 		/*
 		0000000001
@@ -167,7 +167,7 @@ int get_next_occurence(int offset, bitmap_path_s* bitmap_path)
 		*/
 
 		int val = 1 << modulo;
-		int a = ~(val | (val - 1));
+		int a = ~(val - 1);
 		if (a & bitmap_path->bitmap[result])
 		{
 			while (modulo < (sizeof(int) * 8))
@@ -182,14 +182,9 @@ int get_next_occurence(int offset, bitmap_path_s* bitmap_path)
 
 		// 0, go next, eg. 2 -> 3
 		// 4 * 8 = 32 * (2+1) = 96 -> 96 /32 = 3 96%32 = 0
-		offset = (result+1) * (sizeof(int) * 8);
+		last_offset = (result+1) * (sizeof(int) * 8);
 	}
 	return -1;
-}
-
-static NTSTATUS raft_operations_find_files(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset)
-{
-
 }
 
 static int wsubstringcmp(LPCWSTR wstring, LPCWSTR substring, int start_offset)
@@ -209,6 +204,65 @@ static int wsubstringcmp(LPCWSTR wstring, LPCWSTR substring, int start_offset)
 	return 0;
 }
 
+static NTSTATUS DOKAN_CALLBACK raft_operations_find_files(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset)
+{
+
+}
+
+git_strarray* raft_context_get_remote_list(raft_context_s* this_)
+{
+	if (this_->repository)
+	{
+		if (this_->repository_remotes)
+		{
+			return this_->repository_remotes;
+		}
+
+		int err = git_remote_list(&this_->repository_remotes_internal, this_->repository);
+		if (err == 0)
+		{
+			this_->repository_remotes = &this_->repository_remotes_internal;
+			return this_->repository_remotes;
+		}
+
+		LOG_ERROR("Failed git_remote_list with ec=%d", err);
+	}
+
+	return NULL;
+}
+
+static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_remotes(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap)
+{
+	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
+
+	/* we are at root of handler*/
+	if (offset < 0)
+	{
+		git_strarray* remotes = raft_context_get_remote_list(this_);
+		if (remotes)
+		{
+			// root
+			WIN32_FIND_DATAW find_data = { 0 };
+			size_t converted = 0;
+
+			int i = 0;
+			while (i < remotes->count)
+			{
+				mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
+					remotes->strings[i], strlen(remotes->strings[i]));
+				find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+				FillFindData(&find_data, DokanFileInfo);
+				++i;
+			}
+		}
+
+		return STATUS_SUCCESS;
+	}
+
+	// subdir
+	return STATUS_SUCCESS;
+}
+
 static NTSTATUS DOKAN_CALLBACK
 raft_operations_FindFiles(LPCWSTR FileName,
 	PFillFindData FillFindData,
@@ -216,9 +270,10 @@ raft_operations_FindFiles(LPCWSTR FileName,
 {
 	NTSTATUS status = STATUS_SUCCESS;
 	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
-	WIN32_FIND_DATAW find_data;
+	
 
 	LOG_DEBUG("FindFiles: %ls", FileName);
+	// CACHE RESULTS, as the explorer asks millions of times for file list -_-"
 
 	if (this_->repository == NULL)
 	{
@@ -227,10 +282,10 @@ raft_operations_FindFiles(LPCWSTR FileName,
 
 	int count;
 	bitmap_path_s separators_bitmap = get_offsets(PATH_SEPARATOR, FileName, &count);
-
+	int len = wcslen(FileName);
 	int offset = get_next_occurence(-1, &separators_bitmap);
-
-	if (1 == count)
+	// so for root we have: "\\", but for subfolder we have "\\subfolder"
+	if ((len - offset) == 1)
 	{
 		if (offset != 0)
 		{
@@ -238,6 +293,7 @@ raft_operations_FindFiles(LPCWSTR FileName,
 		}
 		else
 		{
+			WIN32_FIND_DATAW find_data;
 			// root
 			memcpy(find_data.cFileName, path_branch, (wcslen(path_branch) + 1) * 2);
 			find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
@@ -255,15 +311,14 @@ raft_operations_FindFiles(LPCWSTR FileName,
 	else
 	{
 		int next_offset = get_next_occurence(offset, &separators_bitmap);
-
-		int delta = next_offset - offset - 1;
+		int delta = ((next_offset < 0) ? len : next_offset) - offset - 1;
 
 		switch (delta)
 		{
 		case 7: /* remotes */
 			if (wsubstringcmp(FileName, path_remotes, offset + 1) == 0)
 			{
-
+				status = raft_operations_find_files_remotes(FileName, FillFindData, DokanFileInfo, next_offset, &separators_bitmap);
 			}
 			break;
 		case 6: /* branch*/
@@ -279,11 +334,9 @@ raft_operations_FindFiles(LPCWSTR FileName,
 			}
 			break;
 		}
-
-
 	}
 
-
+	LOG_DEBUG("Exit, status=0x%08X.", status);
 	return status;
 }
 

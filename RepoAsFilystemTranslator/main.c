@@ -136,7 +136,7 @@ int main(int argc, char* argv[])
 
 
 	
-	//Check If Repository
+	//Check If Repository https://libgit2.org/docs/guides/101-samples/
 	//	/* Pass NULL for the output parameter to check for but not open the repo */
 	//	if (git_repository_open_ext(
 	//		NULL, "/tmp/…", GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) == 0) {
@@ -203,6 +203,12 @@ exit:
 
 		if (pCtx->repository_path.buffer) {
 			free(pCtx->repository_path.buffer);
+		}
+
+		if (pCtx->repository_remotes)
+		{
+			pCtx->repository_remotes = NULL;
+			git_strarray_free(&pCtx->repository_remotes_internal);
 		}
 		free(pCtx);
 	}

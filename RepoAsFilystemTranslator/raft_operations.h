@@ -3,6 +3,7 @@
 
 #include <dokan/dokan.h>
 #include <windows.h>
+#include <stdlib.h>
 
 //#define WIN10_ENABLE_LONG_PATH
 #ifdef WIN10_ENABLE_LONG_PATH
@@ -41,10 +42,12 @@ struct raft_context {
 	buffer_char_s repository_path;
 	buffer_wchar_t_s mount_point;
 	git_repository* repository;
+	git_strarray* repository_remotes;
+	git_strarray repository_remotes_internal;
 };
 
 struct bitmap_path {
-	int bitmap[DOKAN_MAX_PATH / (sizeof(int) * 8)];
+	int bitmap[DOKAN_MAX_PATH / (sizeof(int) * 8) + ((DOKAN_MAX_PATH % (sizeof(int) * 8) > 0) ? 1 : 0)];
 };
 
 typedef struct bitmap_path bitmap_path_s;
