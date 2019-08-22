@@ -22,6 +22,8 @@ void raft_log_exit(void);
 
 #define LOG_EOL "\n"
 
+#define LOG_DEBUG(message, ...) \
+ printf(LOG_PREFIX message LOG_EOL, LOG_PREFIX_PARAMS, ##__VA_ARGS__)
 #define LOG_INFO(message, ...) \
  printf(LOG_PREFIX message LOG_EOL, LOG_PREFIX_PARAMS, ##__VA_ARGS__)
 #define LOG_ERROR(message, ...) fprintf(stderr, LOG_PREFIX message LOG_EOL, LOG_PREFIX_PARAMS, ##__VA_ARGS__)

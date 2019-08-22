@@ -31,13 +31,7 @@
 #define LOG_NAME "main.c"
 #include "raft_log.h"
 
-//#define WIN10_ENABLE_LONG_PATH
-#ifdef WIN10_ENABLE_LONG_PATH
-//dirty but should be enough
-#define DOKAN_MAX_PATH 32768
-#else
-#define DOKAN_MAX_PATH MAX_PATH
-#endif // DEBUG
+
 
 
 #ifndef S_ISDIR
@@ -48,41 +42,7 @@
 
 #define IS_EC(ret) (ret < 0)
 
-#define DEFINE_BUFFER(type) \
-	struct buffer_##type { \
-		size_t length; \
-		type * buffer;  \
-    }; \
-	typedef struct buffer_##type buffer_##type##_s
-
-
-#define DEFINE_BUFFER_EMBEDDED(type) \
-	struct buffer_em_##type { \
-		size_t length; \
-		type   buffer[1]; \
-	}; \
-	typedef struct buffer_em_##type buffer_em_##type##_s
-
-DEFINE_BUFFER(char);
-DEFINE_BUFFER_EMBEDDED(char);
-
-DEFINE_BUFFER(wchar_t);
-
-struct buffer {
-	size_t length;
-	
-};
-
-struct raft_context {
-	DOKAN_OPERATIONS dokan_operations;
-	DOKAN_OPTIONS dokan_options;
-	buffer_wchar_t_s repository_path;
-	buffer_wchar_t_s mount_point;
-};
-
-typedef struct raft_context raft_context_s;
-
-void raft_set_dokan_options(PDOKAN_OPTIONS dokan_opt, PWCHAR mount_point)
+void raft_set_dokan_options(PDOKAN_OPTIONS dokan_opt, PWCHAR mount_point, ULONG64 context)
 {
 	dokan_opt->Version = DOKAN_VERSION;
 	dokan_opt->ThreadCount = 0; // fine tune later
@@ -91,10 +51,13 @@ void raft_set_dokan_options(PDOKAN_OPTIONS dokan_opt, PWCHAR mount_point)
 	dokan_opt->Options |= DOKAN_OPTION_DEBUG;
 	dokan_opt->Options |= DOKAN_OPTION_STDERR;
 
-	dokan_opt->Options |= DOKAN_OPTION_MOUNT_MANAGER;
+	// recycle_bin and whatnot, we dont want that
+	//dokan_opt->Options |= DOKAN_OPTION_MOUNT_MANAGER;
+	//dokan_opt->Options |= DOKAN_OPTION_REMOVABLE;
 
 	dokan_opt->Timeout = 1000 * 60 * 5;
 
+	dokan_opt->GlobalContext = context;
 }
 
 int main(int argc, char* argv[])
@@ -171,23 +134,64 @@ int main(int argc, char* argv[])
 
 	size_t repoPathLen = strlen(repoPath) + 1;
 
-	pCtx->repository_path.length = repoPathLen * 2;
-	pCtx->repository_path.buffer = (wchar_t*)malloc(repoPathLen * 2);
 
-	size_t converted = 0;
-	mbstowcs_s(&converted, pCtx->repository_path.buffer, repoPathLen,
-		repoPath, repoPathLen - 1);
+	
+	//Check If Repository
+	//	/* Pass NULL for the output parameter to check for but not open the repo */
+	//	if (git_repository_open_ext(
+	//		NULL, "/tmp/…", GIT_REPOSITORY_OPEN_NO_SEARCH, NULL) == 0) {
+	//		/* directory looks like an openable repository */;
+	//	}
+	//
+
+	pCtx->repository_path.length = repoPathLen;
+	pCtx->repository_path.buffer = (char*)malloc(repoPathLen);
+
+	memcpy(pCtx->repository_path.buffer, repoPath, repoPathLen);
 	
 	size_t mountPointLen = strlen(mountPoint) + 1;
 
 	pCtx->mount_point.length = mountPointLen * 2;
 	pCtx->mount_point.buffer = (wchar_t*)malloc(mountPointLen*2);
 
+	size_t converted = 0;
 	mbstowcs_s(&converted, pCtx->mount_point.buffer, mountPointLen,
 		mountPoint, mountPointLen - 1);
 
-	raft_set_dokan_options(&pCtx->dokan_options, pCtx->mount_point.buffer);
+	raft_set_dokan_options(&pCtx->dokan_options, pCtx->mount_point.buffer, (ULONG64)pCtx);
 	raft_set_dokan_operations(&pCtx->dokan_operations);
+
+	int status = DokanMain(&pCtx->dokan_options, &pCtx->dokan_operations);
+	switch (status) {
+	case DOKAN_SUCCESS:
+		fprintf(stderr, "Success\n");
+		break;
+	case DOKAN_ERROR:
+		fprintf(stderr, "Error\n");
+		break;
+	case DOKAN_DRIVE_LETTER_ERROR:
+		fprintf(stderr, "Bad Drive letter\n");
+		break;
+	case DOKAN_DRIVER_INSTALL_ERROR:
+		fprintf(stderr, "Can't install driver\n");
+		break;
+	case DOKAN_START_ERROR:
+		fprintf(stderr, "Driver something wrong\n");
+		break;
+	case DOKAN_MOUNT_ERROR:
+		fprintf(stderr, "Can't assign a drive letter\n");
+		break;
+	case DOKAN_MOUNT_POINT_ERROR:
+		fprintf(stderr, "Mount point error\n");
+		break;
+	case DOKAN_VERSION_ERROR:
+		fprintf(stderr, "Version error\n");
+		break;
+	default:
+		fprintf(stderr, "Unknown error: %d\n", status);
+		break;
+	}
+
 exit:
 	LOG_INFO("Shutting down: " PROGRAM_NAME);
 	git_libgit2_shutdown();
