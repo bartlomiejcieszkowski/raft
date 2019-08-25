@@ -38,5 +38,8 @@
     <ClInclude Include="raft_log.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="raft_internals.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

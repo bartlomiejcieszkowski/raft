@@ -170,6 +170,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="getopt.h" />
+    <ClInclude Include="raft_internals.h" />
     <ClInclude Include="raft_log.h" />
     <ClInclude Include="raft_operations.h" />
   </ItemGroup>
