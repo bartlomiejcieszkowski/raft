@@ -7,6 +7,9 @@
 
 #include <git2.h>
 
+#include <dokan/dokan.h>
+#include <windows.h>
+
 #define DEBUG 1
 
 enum raft_obj_type {
@@ -44,6 +47,7 @@ inline void* raft_malloc(size_t size)
 		ptr = (void*)& debug_header[1];
 	}
 #endif
+	return ptr;
 }
 
 inline void raft_free(void* ptr)
@@ -58,10 +62,7 @@ struct raft_obj_header {
 
 typedef struct raft_obj_header raft_obj_header_s;
 
-int is_raft_obj(void* obj, raft_obj_type_e type)
-{
-	return ((raft_obj_header_s*)obj)->type == type;
-}
+int raft_is_raft_obj(void* obj, raft_obj_type_e type);
 
 struct raft_obj_ll {
 	raft_obj_header_s header;
@@ -164,5 +165,57 @@ raft_oid_entry_s raft_oid_get_entry(git_oid* oid);
 RAFT_REFCOUNT_TYPE raft_oid_entry_addref(raft_oid_entry_s*);
 
 RAFT_REFCOUNT_TYPE raft_oid_entry_release(raft_oid_entry_s*);
+
+//#define WIN10_ENABLE_LONG_PATH
+#ifdef WIN10_ENABLE_LONG_PATH
+//dirty but should be enough
+#define DOKAN_MAX_PATH 32768
+#else
+#define DOKAN_MAX_PATH MAX_PATH
+#endif // DEBUG
+
+#define DEFINE_BUFFER(type) \
+	struct buffer_##type { \
+		size_t length; \
+		type * buffer;  \
+    }; \
+	typedef struct buffer_##type buffer_##type##_s
+
+
+#define DEFINE_BUFFER_EMBEDDED(type) \
+	struct buffer_em_##type { \
+		size_t length; \
+		type   buffer[1]; \
+	}; \
+	typedef struct buffer_em_##type buffer_em_##type##_s
+
+
+DEFINE_BUFFER(char);
+DEFINE_BUFFER_EMBEDDED(char);
+
+DEFINE_BUFFER(wchar_t);
+
+struct raft_context {
+	buffer_char_s repository_path;
+	buffer_wchar_t_s mount_point;
+	git_repository* repository;
+	git_strarray* repository_remotes;
+	git_strarray repository_remotes_internal;
+	git_strarray* tags;
+	git_strarray tags_internal;
+};
+
+
+
+
+struct bitmap_path {
+	int bitmap[DOKAN_MAX_PATH / (sizeof(int) * 8) + ((DOKAN_MAX_PATH % (sizeof(int) * 8) > 0) ? 1 : 0)];
+};
+
+typedef struct bitmap_path bitmap_path_s;
+
+
+typedef struct raft_context raft_context_s;
+
 
 #endif /* RAFT_INTERNALS_H */

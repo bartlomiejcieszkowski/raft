@@ -26,6 +26,7 @@
 #include <errno.h>
 
 #include "getopt.h"
+#include "raft_internals.h"
 #include "raft_operations.h"
 
 #define LOG_NAME "main.c"
@@ -158,10 +159,13 @@ int main(int argc, char* argv[])
 	mbstowcs_s(&converted, pCtx->mount_point.buffer, mountPointLen,
 		mountPoint, mountPointLen - 1);
 
-	raft_set_dokan_options(&pCtx->dokan_options, pCtx->mount_point.buffer, (ULONG64)pCtx);
-	raft_set_dokan_operations(&pCtx->dokan_operations);
+	DOKAN_OPERATIONS* dokan_operations = raft_malloc(sizeof(DOKAN_OPERATIONS));
+	DOKAN_OPTIONS* dokan_options = raft_malloc(sizeof(DOKAN_OPTIONS));
 
-	int status = DokanMain(&pCtx->dokan_options, &pCtx->dokan_operations);
+	raft_set_dokan_options(dokan_options, pCtx->mount_point.buffer, (ULONG64)pCtx);
+	raft_set_dokan_operations(dokan_operations);
+
+	int status = DokanMain(dokan_options, dokan_operations);
 	switch (status) {
 	case DOKAN_SUCCESS:
 		fprintf(stderr, "Success\n");

@@ -67,3 +67,7 @@ RAFT_REFCOUNT_TYPE raft_oid_entry_release(raft_oid_entry_s* entry)
 }
 
 
+int raft_is_raft_obj(void* obj, raft_obj_type_e type)
+{
+	return ((raft_obj_header_s*)obj)->type == type;
+}
