@@ -323,31 +323,6 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_remotes(LPCWSTR FileNa
 	return STATUS_SUCCESS;
 }
 
-/*
-Soo..
-
-We will have os asking for list of files,
-we could hold in the memory local snapshot of a tree for a commit @ branch
-
-dict<oid,filelist>
-
-algo:
-  . get branch oid
-  . check if it is the one we have saved
-  . if yes use snapshot
-  . if not:
-    . get filelist
-	. for each file store reference - this is for faster lookup when opening files and doing things on them
-
-open file:
-  . get the file blob from oid
-  . modify in memory
-  . if contents changed
-    . create commit, add this file, commit to this branch
-
-
-
-*/
 
 static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap)
 {
