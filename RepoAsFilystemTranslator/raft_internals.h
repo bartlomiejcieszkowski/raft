@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string>
 
+#include <git2.h>
+
+#define DEBUG 1
 
 enum raft_obj_type {
 	RAFT_OBJ_TYPE_UNDEFINED = 0,
@@ -15,10 +18,44 @@ enum raft_obj_type {
 
 typedef enum raft_obj_type raft_obj_type_e;
 
+struct raft_debug_header {
+	time_t creation_time;
+	size_t obj_size; /* excl this header */
+};
+typedef struct raft_debug_header raft_debug_header_s;
+
 struct raft_obj_header {
 	raft_obj_type_e type;
 	struct raft_obj_header* child_obj;
+
 };
+
+extern time_t start_time; /* from raft_log */
+
+// for debug purposes we will define an malloc/free internal call
+inline void* raft_malloc(size_t size)
+{
+	void* ptr = malloc(size
+#if DEBUG
+		+ sizeof(raft_debug_header_s)
+#endif
+	);
+
+#if DEBUG
+	if (ptr) {
+		raft_debug_header_s* debug_header = (raft_debug_header_s*)ptr;
+		debug_header->creation_time = time(NULL) - start_time;
+		debug_header->obj_size = size;
+
+		ptr = (void*)& debug_header[1];
+	}
+#endif
+}
+
+inline void raft_free(void* ptr)
+{
+	free(ptr);
+}
 
 typedef struct raft_obj_header raft_obj_header_s;
 
