@@ -210,6 +210,12 @@ exit:
 			pCtx->repository_remotes = NULL;
 			git_strarray_free(&pCtx->repository_remotes_internal);
 		}
+
+		if (pCtx->tags)
+		{
+			pCtx->tags = NULL;
+			git_strarray_free(&pCtx->tags_internal);
+		}
 		free(pCtx);
 	}
 
