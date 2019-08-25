@@ -24,12 +24,6 @@ struct raft_debug_header {
 };
 typedef struct raft_debug_header raft_debug_header_s;
 
-struct raft_obj_header {
-	raft_obj_type_e type;
-	struct raft_obj_header* child_obj;
-
-};
-
 extern time_t start_time; /* from raft_log */
 
 // for debug purposes we will define an malloc/free internal call
@@ -57,12 +51,50 @@ inline void raft_free(void* ptr)
 	free(ptr);
 }
 
+
+struct raft_obj_header {
+	raft_obj_type_e type;
+};
+
 typedef struct raft_obj_header raft_obj_header_s;
 
 int is_raft_obj(void* obj, raft_obj_type_e type)
 {
 	return ((raft_obj_header_s*)obj)->type == type;
 }
+
+struct raft_obj_ll {
+	raft_obj_header_s header;
+	raft_obj_header_s* next;
+};
+
+typedef struct raft_obj_ll raft_obj_ll_s;
+
+struct raft_obj_ll_parent {
+	raft_obj_header_s header;
+	raft_obj_header_s* next;
+	raft_obj_header_s* child;
+};
+
+typedef struct raft_obj_ll_parent raft_obj_ll_parent_s;
+
+
+// define so we can not define it if not needed
+#define RAFT_OBJ_HEADER(name) \
+    raft_obj_header_s name
+
+#define RAFT_OBJ_ENTRY_HEADER(name) \
+    raft_obj_ll_s name
+
+#define RAFT_OBJ_ENTRY_PARENT_HEADER(name) \
+    raft_obj_ll_parent_s name
+
+#define RAFT_OBJ_HEADER_UNION(name, subtype) \
+    union { \
+        raft_obj_header_s name; \
+        subtype name## _sub; \
+    }
+    
 
 /*
 Soo..
@@ -90,7 +122,47 @@ open file:
 
 */
 
+#define RAFT_REFCOUNT_TYPE int32_t
+
+typedef void (*free_fn)(void*);
+
+#define DECLARE_FREE_FN(name) \
+    void name(void*)
 
 
+
+// git_oid is 20 bytes, 5dwords.. yeah, we can afford it
+struct raft_oid_entry
+{
+	RAFT_OBJ_HEADER_UNION(header, raft_obj_ll_parent_s);
+	RAFT_REFCOUNT_TYPE refcount;
+	git_oid key; /* assume oid 0 is invalid or null is invalid.. yeah */
+	void* value; /* with void we should be able to store pretty much anything */
+	free_fn free_;
+};
+
+/* free wrappers */
+DECLARE_FREE_FN(raft_git_reference_free);
+DECLARE_FREE_FN(raft_git_commit_free);
+DECLARE_FREE_FN(raft_git_tree_free);
+DECLARE_FREE_FN(raft_git_repository_free);
+
+typedef struct raft_oid_entry raft_oid_entry_s;
+
+#define RAFT_OID_ENTRIES_COUNT 10
+
+struct raft_oid_entries
+{
+	RAFT_OBJ_HEADER_UNION(header, raft_obj_ll_s);
+	raft_oid_entry_s entries[RAFT_OID_ENTRIES_COUNT];
+};
+
+typedef struct raft_oid_entries raft_oid_entries_s;
+
+raft_oid_entry_s raft_oid_get_entry(git_oid* oid);
+
+RAFT_REFCOUNT_TYPE raft_oid_entry_addref(raft_oid_entry_s*);
+
+RAFT_REFCOUNT_TYPE raft_oid_entry_release(raft_oid_entry_s*);
 
 #endif /* RAFT_INTERNALS_H */
