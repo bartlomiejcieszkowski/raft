@@ -95,14 +95,52 @@ wchar_t path_branch[] = L"branch";
 wchar_t path_tags[] = L"tags";
 wchar_t path_remotes[] = L"remotes";
 
-#define PATH_SEPARATOR L'\\'
+#define STRING_PATH_SEPARATOR '\\'
+#define WSTRING_PATH_SEPARATOR L'\\'
+#define CSTRING_NULL '\0'
+#define WSTRING_NULL L'\0'
 
-bitmap_path_s get_offsets(wchar_t character, LPCWSTR wstring, int* count)
+
+bitmap_path_s cstring_get_offsets(char character, const char* cstring, int* count)
 {
 	bitmap_path_s retVal = { 0 };
 	int offset = 0;
 	if (count) { *count = 0; }
-	while (wstring[offset] != L'\0')
+	while (cstring[offset] != CSTRING_NULL)
+	{
+		if (character == cstring[offset])
+		{
+			retVal.bitmap[offset / (sizeof(int) * 8)] |= (1 << (offset % (sizeof(int) * 8)));
+			if (count) { *count += 1; }
+		}
+		++offset;
+	}
+	return retVal;
+}
+
+static int cstring_subcmp(const char* cstring, const char* substring, int start_offset)
+{
+	int offset = 0;
+	while (substring[offset] != L'\0')
+	{
+		if (substring[offset] == cstring[start_offset + offset])
+		{
+			++offset;
+			continue;
+		}
+
+		return substring[offset] < cstring[start_offset + offset] ? -1 : 1;
+
+	}
+	return 0;
+}
+
+bitmap_path_s wstring_get_offsets(wchar_t character, LPCWSTR wstring, int* count)
+{
+	bitmap_path_s retVal = { 0 };
+	int offset = 0;
+	if (count) { *count = 0; }
+	while (wstring[offset] != WSTRING_NULL)
 	{
 		if (character == wstring[offset])
 		{
@@ -114,7 +152,7 @@ bitmap_path_s get_offsets(wchar_t character, LPCWSTR wstring, int* count)
 	return retVal;
 }
 
-int get_next_occurence(int last_offset, bitmap_path_s* bitmap_path)
+int bitmap_get_next_occurence(int last_offset, bitmap_path_s* bitmap_path)
 {
 	if (NULL == bitmap_path) { return -2; }
 
@@ -187,7 +225,7 @@ int get_next_occurence(int last_offset, bitmap_path_s* bitmap_path)
 	return -1;
 }
 
-static int wsubstringcmp(LPCWSTR wstring, LPCWSTR substring, int start_offset)
+static int wstring_subcmp(LPCWSTR wstring, LPCWSTR substring, int start_offset)
 {
 	int offset = 0;
 	while (substring[offset] != L'\0')
@@ -231,6 +269,28 @@ git_strarray* raft_context_get_remote_list(raft_context_s* this_)
 	return NULL;
 }
 
+git_strarray* raft_context_get_tag_list(raft_context_s* this_)
+{
+	if (this_->repository)
+	{
+		if (this_->tags)
+		{
+			return this_->tags;
+		}
+
+		int err = git_tag_list(&this_->tags_internal, this_->repository);
+		if (err == 0)
+		{
+			this_->tags = &this_->tags_internal;
+			return this_->tags;
+		}
+
+		LOG_ERROR("Failed git_remote_list with ec=%d", err);
+	}
+
+	return NULL;
+}
+
 static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_remotes(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap)
 {
 	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
@@ -263,6 +323,189 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_remotes(LPCWSTR FileNa
 	return STATUS_SUCCESS;
 }
 
+/*
+Soo..
+
+We will have os asking for list of files,
+we could hold in the memory local snapshot of a tree for a commit @ branch
+
+dict<oid,filelist>
+
+algo:
+  . get branch oid
+  . check if it is the one we have saved
+  . if yes use snapshot
+  . if not:
+    . get filelist
+	. for each file store reference - this is for faster lookup when opening files and doing things on them
+
+open file:
+  . get the file blob from oid
+  . modify in memory
+  . if contents changed
+    . create commit, add this file, commit to this branch
+
+
+
+*/
+
+static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap)
+{
+	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
+
+	/* we are at root of handler*/
+	if (offset < 0)
+	{
+		git_branch_iterator* iterator;
+
+		int err = git_branch_iterator_new(&iterator, this_->repository, GIT_BRANCH_LOCAL);
+		if (err == 0)
+		{
+			// root
+			WIN32_FIND_DATAW find_data = { 0 };
+			size_t converted = 0;
+
+			git_branch_t type;
+			git_reference* reference;
+			bitmap_path_s separator_reference;
+			int count = 0;
+			while (GIT_ITEROVER != git_branch_next(&reference, &type, iterator))
+			{
+				const char* name = git_reference_name(reference);
+
+
+				separator_reference = cstring_get_offsets('/', name, &count);
+				/* for is: refs/heads/master .. */
+				if (count == 2) {
+					int offset = bitmap_get_next_occurence(-1, &separator_reference);
+					offset = bitmap_get_next_occurence(offset, &separator_reference); // get last?
+
+					mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
+						&name[offset+1], strlen(name) - offset - 1);
+					find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+					FillFindData(&find_data, DokanFileInfo);
+				}
+				git_reference_free(reference);
+
+			}
+
+			git_branch_iterator_free(iterator);
+		}
+
+		return STATUS_SUCCESS;
+	}
+
+	// subdir
+	int next_offset = bitmap_get_next_occurence(offset, separator_bitmap);
+	BOOL isBranchRoot = next_offset == -1 ? TRUE : FALSE;
+
+	int substringLen = isBranchRoot == TRUE ?
+		(wcslen(&FileName[offset])) : (next_offset - offset);
+
+	char* localName = (char*)malloc(substringLen);
+
+	wcstombs_s(NULL, localName, substringLen, &FileName[offset + 1], substringLen - 1);
+	
+	git_reference* ref = NULL;
+	int ec = git_reference_dwim(&ref, this_->repository, localName);
+	
+	
+	if (ref)
+	{
+		if (git_reference_is_branch(ref))
+		{
+			// yay
+			LOG_DEBUG("Branch %s", localName);
+			git_oid* commit_oid;
+			git_commit* commit = NULL;
+			git_tree* tree = NULL;
+			char oid_string[10];
+			//ec = git_reference_name_to_id(&commit_oid, this_->repository, localName); // long name needed refs/head/blabla
+
+			commit_oid = git_reference_target(ref);
+
+			ec = git_commit_lookup(&commit, this_->repository, commit_oid);
+			git_oid_tostr(oid_string, 10, commit_oid);
+			LOG_DEBUG("Commit %s", oid_string);
+
+			ec = git_commit_tree(&tree, commit);
+
+			WIN32_FIND_DATAW find_data = { 0 };
+			size_t tree_entrycount = git_tree_entrycount(tree);
+			size_t i = 0;
+			while (i < tree_entrycount)
+			{
+				const git_tree_entry* tree_entry = git_tree_entry_byindex(tree, i);
+
+				git_object_t object_type = git_tree_entry_type(tree_entry);
+				if (object_type == GIT_OBJECT_TREE)
+				{
+					// dir
+					find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+				}
+				else if (object_type == GIT_OBJECT_BLOB)
+				{
+					// file ro
+					find_data.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
+				}
+
+				size_t converted;
+				const char* name = git_tree_entry_name(tree_entry);
+				mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
+					name, strlen(name));
+				FillFindData(&find_data, DokanFileInfo);
+				++i;
+			}
+
+
+			if (tree) { git_tree_free(tree); }
+			if (commit) { git_commit_free(commit); }
+		}
+
+		git_reference_free(ref);
+	}
+
+	free(localName);
+	
+
+
+	return STATUS_SUCCESS;
+}
+
+static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_tags(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap)
+{
+	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
+
+	/* we are at root of handler*/
+	if (offset < 0)
+	{
+		git_branch_iterator* iterator;
+
+		git_strarray* tags = raft_context_get_tag_list(this_);
+		if (tags)
+		{
+			// root
+			WIN32_FIND_DATAW find_data = { 0 };
+			size_t converted = 0;
+
+			int i = 0;
+			while (i < tags->count)
+			{
+				mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
+					tags->strings[i], strlen(tags->strings[i]));
+				find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+				FillFindData(&find_data, DokanFileInfo);
+				++i;
+			}
+		}
+
+		return STATUS_SUCCESS;
+	}
+
+	// subdir
+	return STATUS_SUCCESS;
+}
+
 static NTSTATUS DOKAN_CALLBACK
 raft_operations_FindFiles(LPCWSTR FileName,
 	PFillFindData FillFindData,
@@ -281,9 +524,9 @@ raft_operations_FindFiles(LPCWSTR FileName,
 	}
 
 	int count;
-	bitmap_path_s separators_bitmap = get_offsets(PATH_SEPARATOR, FileName, &count);
+	bitmap_path_s separators_bitmap = wstring_get_offsets(WSTRING_PATH_SEPARATOR, FileName, &count);
 	int len = wcslen(FileName);
-	int offset = get_next_occurence(-1, &separators_bitmap);
+	int offset = bitmap_get_next_occurence(-1, &separators_bitmap);
 	// so for root we have: "\\", but for subfolder we have "\\subfolder"
 	if ((len - offset) == 1)
 	{
@@ -310,27 +553,27 @@ raft_operations_FindFiles(LPCWSTR FileName,
 	}
 	else
 	{
-		int next_offset = get_next_occurence(offset, &separators_bitmap);
+		int next_offset = bitmap_get_next_occurence(offset, &separators_bitmap);
 		int delta = ((next_offset < 0) ? len : next_offset) - offset - 1;
 
 		switch (delta)
 		{
 		case 7: /* remotes */
-			if (wsubstringcmp(FileName, path_remotes, offset + 1) == 0)
+			if (wstring_subcmp(FileName, path_remotes, offset + 1) == 0)
 			{
 				status = raft_operations_find_files_remotes(FileName, FillFindData, DokanFileInfo, next_offset, &separators_bitmap);
 			}
 			break;
 		case 6: /* branch*/
-			if (wsubstringcmp(FileName, path_branch, offset + 1) == 0)
+			if (wstring_subcmp(FileName, path_branch, offset + 1) == 0)
 			{
-
+				status = raft_operations_find_files_branch(FileName, FillFindData, DokanFileInfo, next_offset, &separators_bitmap);
 			}
 			break;
 		case 4: /* tags */
-			if (wsubstringcmp(FileName, path_tags, offset + 1) == 0)
+			if (wstring_subcmp(FileName, path_tags, offset + 1) == 0)
 			{
-
+				status = raft_operations_find_files_tags(FileName, FillFindData, DokanFileInfo, next_offset, &separators_bitmap);
 			}
 			break;
 		}

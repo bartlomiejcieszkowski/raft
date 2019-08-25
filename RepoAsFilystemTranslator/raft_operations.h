@@ -44,6 +44,8 @@ struct raft_context {
 	git_repository* repository;
 	git_strarray* repository_remotes;
 	git_strarray repository_remotes_internal;
+	git_strarray* tags;
+	git_strarray tags_internal;
 };
 
 struct bitmap_path {
