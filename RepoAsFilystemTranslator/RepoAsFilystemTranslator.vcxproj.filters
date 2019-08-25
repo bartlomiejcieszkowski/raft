@@ -27,6 +27,9 @@
     <ClCompile Include="raft_log.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="raft_internals.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="getopt.h">

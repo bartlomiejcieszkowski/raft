@@ -159,8 +159,8 @@ int main(int argc, char* argv[])
 	mbstowcs_s(&converted, pCtx->mount_point.buffer, mountPointLen,
 		mountPoint, mountPointLen - 1);
 
-	DOKAN_OPERATIONS* dokan_operations = raft_malloc(sizeof(DOKAN_OPERATIONS));
-	DOKAN_OPTIONS* dokan_options = raft_malloc(sizeof(DOKAN_OPTIONS));
+	DOKAN_OPERATIONS* dokan_operations = raft_malloc(sizeof(DOKAN_OPERATIONS), RAFT_OBJ_TYPE_UNDEFINED);
+	DOKAN_OPTIONS* dokan_options = raft_malloc(sizeof(DOKAN_OPTIONS), RAFT_OBJ_TYPE_UNDEFINED);
 
 	raft_set_dokan_options(dokan_options, pCtx->mount_point.buffer, (ULONG64)pCtx);
 	raft_set_dokan_operations(dokan_operations);

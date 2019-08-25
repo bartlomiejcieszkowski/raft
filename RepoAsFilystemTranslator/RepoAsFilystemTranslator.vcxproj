@@ -165,6 +165,7 @@
   <ItemGroup>
     <ClCompile Include="getopt.c" />
     <ClCompile Include="main.c" />
+    <ClCompile Include="raft_internals.c" />
     <ClCompile Include="raft_log.c" />
     <ClCompile Include="raft_operations.c" />
   </ItemGroup>

@@ -383,6 +383,8 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileNam
 	
 	git_reference* ref = NULL;
 	int ec = git_reference_dwim(&ref, this_->repository, localName);
+	//iteratable_ =  raft_get_file_tree(this_, localName);
+	//
 	
 	
 	if (ref)
@@ -398,46 +400,43 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileNam
 			//ec = git_reference_name_to_id(&commit_oid, this_->repository, localName); // long name needed refs/head/blabla
 
 			commit_oid = git_reference_target(ref);
+			git_reference_free(ref);
 
-			ec = git_commit_lookup(&commit, this_->repository, commit_oid);
-			git_oid_tostr(oid_string, 10, commit_oid);
-			LOG_DEBUG("Commit %s", oid_string);
-
-			ec = git_commit_tree(&tree, commit);
-
-			WIN32_FIND_DATAW find_data = { 0 };
-			size_t tree_entrycount = git_tree_entrycount(tree);
-			size_t i = 0;
-			while (i < tree_entrycount)
+			raft_entry_s* entry = raft_git_get_tree(this_, commit_oid);
+			if (entry)
 			{
-				const git_tree_entry* tree_entry = git_tree_entry_byindex(tree, i);
+				git_tree* tree = (git_tree*)entry->value;
 
-				git_object_t object_type = git_tree_entry_type(tree_entry);
-				if (object_type == GIT_OBJECT_TREE)
+				WIN32_FIND_DATAW find_data = { 0 };
+				size_t tree_entrycount = git_tree_entrycount(tree);
+				size_t i = 0;
+				while (i < tree_entrycount)
 				{
-					// dir
-					find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
-				}
-				else if (object_type == GIT_OBJECT_BLOB)
-				{
-					// file ro
-					find_data.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
+					const git_tree_entry* tree_entry = git_tree_entry_byindex(tree, i);
+
+					git_object_t object_type = git_tree_entry_type(tree_entry);
+					if (object_type == GIT_OBJECT_TREE)
+					{
+						// dir
+						find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+					}
+					else if (object_type == GIT_OBJECT_BLOB)
+					{
+						// file ro
+						find_data.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
+					}
+
+					size_t converted;
+					const char* name = git_tree_entry_name(tree_entry);
+					mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
+						name, strlen(name));
+					FillFindData(&find_data, DokanFileInfo);
+					++i;
 				}
 
-				size_t converted;
-				const char* name = git_tree_entry_name(tree_entry);
-				mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
-					name, strlen(name));
-				FillFindData(&find_data, DokanFileInfo);
-				++i;
+				raft_entry_release(entry);
 			}
-
-
-			if (tree) { git_tree_free(tree); }
-			if (commit) { git_commit_free(commit); }
 		}
-
-		git_reference_free(ref);
 	}
 
 	free(localName);
