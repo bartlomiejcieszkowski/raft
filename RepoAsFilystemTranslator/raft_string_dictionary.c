@@ -31,17 +31,44 @@ void cstring_dictionary_clear(cstring_dictionary_s* dict)
 	}
 }
 
-cstring_dictionary_value_s cstring_dictionary_get(cstring_dictionary_s* dict, cstring_dictionary_key_s* key)
+cstring_dictionary_value_s* cstring_dictionary_get(cstring_dictionary_s* dict, cstring_dictionary_key_s key)
 {
+	if (dict->entries && dict->size)
+	{
+		size_t i = 0;
+		while (i < dict->size) {
+			if (dict->entries[i].valid && dict->key_compare_fn(key, dict->entries[i].key) == 0) {
+				return dict->entries[i].value;
+			}
+		}
+	}
 
+	return NULL;
 }
 
 int cstring_dictionary_set(cstring_dictionary_s* dict, cstring_dictionary_key_s key, cstring_dictionary_value_s value)
 {
+	cstring_dictionary_value_s* entry_value = cstring_dictionary_get(dict, key);
+	if (entry_value) {
+		// update
+		*entry_value = value;
+		return 0;
+	}
 
+	size_t i = 0;
+	while (i < dict->size) {
+		if (dict->entries[i].valid == 0) {
+			dict->entries[i].key = key;
+			dict->entries[i].value = value;
+			dict->entries[i].valid = 1;
+			return 0;
+		}
+	}
+
+	// resize
 }
 
-void cstring_dictionary_remove(cstring_dictionary_s* dict, cstring_dictionary_key_s key)
+void cstring_dictionary_remove(cstring_dictionary_s* dict, cstring_dictionary_key_s* key)
 {
 
 }

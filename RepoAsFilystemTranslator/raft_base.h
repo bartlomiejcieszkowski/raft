@@ -20,4 +20,86 @@
 
 #define DEBUG 1
 
+typedef enum raft_obj_type {
+	RAFT_OBJ_TYPE_UNDEFINED = 0,
+	RAFT_OBJ_TYPE_BRANCH = 1,
+	RAFT_OBJ_TYPE_REMOTE = 2,
+	RAFT_OBJ_TYPE_TAG = 3,
+
+	RAFT_OBJ_TYPE_ENTRY_MALLOC = 1004,
+	RAFT_OBJ_TYPE_ENTRY_STATIC = 1005,
+} raft_obj_type_e;
+
+typedef struct raft_obj_header {
+	raft_obj_type_e type;
+} raft_obj_header_s;
+
+
+// for debug purposes we will define an malloc/free internal call
+inline void* raft_malloc(size_t size)
+{
+	void* ptr = malloc(size
+#if DEBUG
+		+ sizeof(raft_debug_header_s)
+#endif
+	);
+
+	if (ptr) {
+		memset(ptr, 0, size
+#if DEBUG
+			+ sizeof(raft_debug_header_s)
+#endif
+		);
+
+#if DEBUG
+		raft_debug_header_s* debug_header = (raft_debug_header_s*)ptr;
+		debug_header->creation_time = time(NULL) - start_time;
+		debug_header->obj_size = size;
+
+		ptr = (void*)& debug_header[1];
+#endif
+	}
+
+	return ptr;
+}
+
+// for debug purposes we will define an malloc/free internal call
+inline void* raft_malloc_obj(size_t size, raft_obj_type_e type)
+{
+	void* ptr = malloc(size
+#if DEBUG
+		+ sizeof(raft_debug_header_s)
+#endif
+	);
+
+	if (ptr) {
+		memset(ptr, 0, size
+#if DEBUG
+			+ sizeof(raft_debug_header_s)
+#endif
+		);
+
+#if DEBUG
+		raft_debug_header_s* debug_header = (raft_debug_header_s*)ptr;
+		debug_header->creation_time = time(NULL) - start_time;
+		debug_header->obj_size = size;
+
+		ptr = (void*)& debug_header[1];
+
+#endif
+		((raft_obj_header_s*)ptr)->type = type;
+	}
+
+	return ptr;
+}
+
+inline void raft_free(void* ptr)
+{
+#if DEBUG
+	ptr = &((raft_debug_header_s*)ptr)[-1];
+#endif
+	free(ptr);
+}
+
+
 #endif /* RAFT_BASE_H */
