@@ -1,16 +1,7 @@
 #ifndef RAFT_INTERNALS_H
 #define RAFT_INTERNALS_H
 
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <git2.h>
-
-#include <dokan/dokan.h>
-#include <windows.h>
-
-#define DEBUG 1
+#include "raft_base.h"
 
 enum raft_obj_type {
 	RAFT_OBJ_TYPE_UNDEFINED = 0,
@@ -150,13 +141,6 @@ RAFT_REFCOUNT_TYPE raft_entry_addref(raft_entry_s*);
 
 RAFT_REFCOUNT_TYPE raft_entry_release(raft_entry_s*);
 
-//#define WIN10_ENABLE_LONG_PATH
-#ifdef WIN10_ENABLE_LONG_PATH
-//dirty but should be enough
-#define DOKAN_MAX_PATH 32768
-#else
-#define DOKAN_MAX_PATH MAX_PATH
-#endif // DEBUG
 
 #define DEFINE_BUFFER(type) \
 	struct buffer_##type { \

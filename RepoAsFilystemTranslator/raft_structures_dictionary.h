@@ -1,6 +1,8 @@
 #ifndef RAFT_STRUCTURES_DICTIONARY_H
 #define RAFT_STRUCTURES_DICTIONARY_H
 
+#include "raft_base.h"
+
 #define DECLARE_DICTIONARY(key_type, value_type, name) \
 typedef struct name##_entry { \
 	key_type key; \
