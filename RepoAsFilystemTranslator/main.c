@@ -61,6 +61,14 @@ void raft_set_dokan_options(PDOKAN_OPTIONS dokan_opt, PWCHAR mount_point, ULONG6
 	dokan_opt->GlobalContext = context;
 }
 
+void print_help(char* name)
+{
+	printf("\nUsage:\n");
+	printf("%s -r <path_to_repository> -m Mountpoint\n", name);
+	printf("example:\n");
+	printf("%s -r C:\\my_repo -m M:\\\n", name);
+}
+
 int main(int argc, char* argv[])
 {
 	raft_log_init();
@@ -93,6 +101,10 @@ int main(int argc, char* argv[])
 		case ':':
 			LOG_ERROR("option missing value");
 			break;
+		case '?':
+			LOG_ERROR("Invalid arg");
+			print_help(argv[0]);
+			return -1;
 		}
 	}
 
@@ -104,6 +116,7 @@ int main(int argc, char* argv[])
 	{
 		LOG_ERROR("Missing all necessary args.");
 		ec = -1;
+		print_help(argv[0]);
 		goto exit;
 	}
 
@@ -135,8 +148,6 @@ int main(int argc, char* argv[])
 
 	size_t repoPathLen = strlen(repoPath) + 1;
 
-
-	
 	//Check If Repository https://libgit2.org/docs/guides/101-samples/
 	//	/* Pass NULL for the output parameter to check for but not open the repo */
 	//	if (git_repository_open_ext(
