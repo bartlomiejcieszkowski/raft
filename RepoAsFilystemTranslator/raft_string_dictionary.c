@@ -10,6 +10,7 @@ int cstring_dictionary_init(cstring_dictionary_s* dict, size_t initial_size, cst
 	dict->entry_delete_fn = entry_delete_fn;
 	dict->entries = entries;
 	dict->size = initial_size;
+	return 0;
 }
 
 void cstring_dictionary_clear(cstring_dictionary_s* dict)
@@ -46,6 +47,25 @@ cstring_dictionary_value_s* cstring_dictionary_get(cstring_dictionary_s* dict, c
 	return NULL;
 }
 
+int cstring_dictionary_resize(cstring_dictionary_s* dict, size_t size)
+{
+	if (size < dict->size)
+	{
+		// !truncate!
+		return -1;
+	}
+
+	cstring_dictionary_entry_s* new_entries = (cstring_dictionary_entry_s*)raft_malloc(size);
+
+	memcpy_s(new_entries, size, dict->entries, dict->size);
+	cstring_dictionary_entry_s* old_entries = dict->entries;
+	dict->entries = new_entries;
+	dict->size = size;
+
+	raft_free(old_entries);
+	return 0;
+}
+
 int cstring_dictionary_set(cstring_dictionary_s* dict, cstring_dictionary_key_s key, cstring_dictionary_value_s value)
 {
 	cstring_dictionary_value_s* entry_value = cstring_dictionary_get(dict, key);
@@ -66,14 +86,46 @@ int cstring_dictionary_set(cstring_dictionary_s* dict, cstring_dictionary_key_s 
 	}
 
 	// resize
+	cstring_dictionary_resize(dict, dict->size * 2);
+
+	while (i < dict->size) {
+		if (dict->entries[i].valid == 0) {
+			dict->entries[i].key = key;
+			dict->entries[i].value = value;
+			dict->entries[i].valid = 1;
+			return 0;
+		}
+	}
+
+	return -1;
 }
 
-void cstring_dictionary_remove(cstring_dictionary_s* dict, cstring_dictionary_key_s* key)
+void cstring_dictionary_remove(cstring_dictionary_s* dict, cstring_dictionary_key_s key)
 {
-
+	if (dict->entries && dict->size)
+	{
+		size_t i = 0;
+		while (i < dict->size) {
+			if (dict->entries[i].valid && dict->key_compare_fn(key, dict->entries[i].key) == 0) {
+				if (dict->entry_delete_fn)
+				{
+					dict->entry_delete_fn(&dict->entries[i]);
+					
+				}
+				dict->entries[i].valid = 0;
+			}
+		}
+	}
 }
 
 void cstring_dictionary_foreach(cstring_dictionary_s* dict, cstring_dictionary_entry_fn function)
 {
-
+	size_t i = 0;
+	while (i < dict->size) {
+		if (dict->entries[i].valid)
+		{
+			function(&dict->entries[i]);
+		}
+		++i;
+	}
 }

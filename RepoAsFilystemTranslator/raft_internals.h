@@ -3,18 +3,6 @@
 
 #include "raft_base.h"
 
-
-
-struct raft_debug_header {
-	time_t creation_time;
-	size_t obj_size; /* excl this header */
-};
-typedef struct raft_debug_header raft_debug_header_s;
-
-extern time_t start_time; /* from raft_log */
-
-typedef struct raft_obj_header ;
-
 int raft_is_raft_obj(void* obj, raft_obj_type_e type);
 
 struct raft_obj_ll {

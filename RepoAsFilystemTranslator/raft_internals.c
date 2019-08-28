@@ -155,7 +155,7 @@ raft_entry_s* raft_git_get_tree(raft_context_s* this_, git_oid* oid)
 	}
 	else
 	{
-		entry = (raft_entry_s*) raft_malloc(sizeof(raft_entry_s), RAFT_OBJ_TYPE_ENTRY_MALLOC);
+		entry = (raft_entry_s*) raft_malloc_obj(sizeof(raft_entry_s), RAFT_OBJ_TYPE_ENTRY_MALLOC);
 	}
 
 	entry->free_ = &raft_git_tree_free;
