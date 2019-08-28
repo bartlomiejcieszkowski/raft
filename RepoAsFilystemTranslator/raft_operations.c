@@ -5,6 +5,13 @@
 #define LOG_NAME "raft_operations.c"
 #include "raft_log.h"
 
+#define DUMMY_FILE 1
+#if DUMMY_FILE
+const char dummy_text[] = "Hello Raft, lorem ipsum dolor sid omet.";
+#define DUMMY_FILE_BUFFER_SIZE 4096
+#define DUMMY_FILE_SIZE (4 + DUMMY_FILE_BUFFER_SIZE)
+#endif
+
 static NTSTATUS DOKAN_CALLBACK raft_operations_CreateFile(LPCWSTR FileName, PDOKAN_IO_SECURITY_CONTEXT SecurityContext,
 	ACCESS_MASK DesiredAccess, ULONG FileAttributes,
 	ULONG ShareAccess, ULONG CreateDisposition,
@@ -32,6 +39,42 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_CreateFile(LPCWSTR FileName, PDOK
 	else {
 		LOG_DEBUG("UNKNOWN creationDisposition!");
 	}
+
+	ACCESS_MASK genericDesiredAccess;
+	DWORD fileAttributesAndFlags;
+	DWORD creationDisposition;
+
+	DokanMapKernelToUserCreateFileFlags(
+		DesiredAccess, FileAttributes, CreateOptions, CreateDisposition,
+		&genericDesiredAccess, &fileAttributesAndFlags, &creationDisposition);
+
+
+	if (DokanFileInfo->IsDirectory)
+	{
+
+	}
+	else
+	{
+		// Truncate should always be used with write access
+		if (creationDisposition == TRUNCATE_EXISTING)
+		{
+			genericDesiredAccess |= GENERIC_WRITE;
+		}
+
+#if DUMMY_FILE
+		uint32_t* dummyFile = (uint32_t*)raft_malloc(DUMMY_FILE_SIZE);
+		dummyFile[0] = 0;
+		++dummyFile[0];
+		DokanFileInfo->Context = (UINT64)dummyFile;
+		char* textPointer = &dummyFile[1];
+		memcpy_s(textPointer, DUMMY_FILE_BUFFER_SIZE, dummy_text, sizeof(dummy_text));
+
+		// this is called a lot, we need to keep handles, and get them from dict
+		// add refcount, and decrement, as this is what is expect to be done
+		// CloseHandle() OpenHandle()
+#endif
+	}
+
 	return status;
 }
 
@@ -47,6 +90,19 @@ static void DOKAN_CALLBACK raft_operations_CloseFile(LPCWSTR FileName,
 {
 	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
 	LOG_DEBUG("CloseFile: %ls", FileName);
+	HANDLE handle = (HANDLE)DokanFileInfo->Context;
+	if (handle && handle != INVALID_HANDLE_VALUE)
+	{
+#if DUMMY_FILE
+		uint32_t* dummyFile = (uint32_t*)handle;
+		--dummyFile[0];
+		if (dummyFile[0] == 0)
+		{
+			raft_free(dummyFile);
+		}
+#endif
+	}
+	DokanFileInfo->Context = 0;
 }
 
 static NTSTATUS DOKAN_CALLBACK raft_operations_ReadFile(LPCWSTR FileName, LPVOID Buffer,
@@ -58,6 +114,35 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_ReadFile(LPCWSTR FileName, LPVOID
 	NTSTATUS status = STATUS_SUCCESS;
 	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
 	LOG_DEBUG("ReadFile: %ls", FileName);
+	HANDLE handle = (HANDLE)DokanFileInfo->Context;
+	if (handle && handle != INVALID_HANDLE_VALUE)
+	{
+#if DUMMY_FILE
+		uint32_t* dummyFile = (uint32_t*)handle;
+		char* textPointer = &dummyFile[1];
+
+		if (Buffer && ReadLength)
+		{
+			if (Offset < DUMMY_FILE_BUFFER_SIZE)
+			{
+				if ((BufferLength) >= (DUMMY_FILE_BUFFER_SIZE - Offset))
+				{
+					memcpy_s(Buffer, BufferLength, textPointer + Offset, DUMMY_FILE_BUFFER_SIZE - Offset);
+					*ReadLength = DUMMY_FILE_BUFFER_SIZE - Offset;
+				}
+				else
+				{
+					memcpy_s(Buffer, BufferLength, textPointer + Offset, BufferLength);
+					*ReadLength = BufferLength;
+				}
+			}
+			else
+			{
+				*ReadLength = 0;
+			}
+		}
+#endif
+	}
 	return status;
 }
 
@@ -70,6 +155,36 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_WriteFile(LPCWSTR FileName, LPCVO
 	NTSTATUS status = STATUS_SUCCESS;
 	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
 	LOG_DEBUG("WriteFile: %ls", FileName);
+	HANDLE handle = (HANDLE)DokanFileInfo->Context;
+	if (handle && handle != INVALID_HANDLE_VALUE)
+	{
+#if DUMMY_FILE
+		uint32_t* dummyFile = (uint32_t*)handle;
+		char* textPointer = &dummyFile[1];
+
+		if (Buffer && NumberOfBytesWritten)
+		{
+			if (Offset < DUMMY_FILE_BUFFER_SIZE)
+			{
+				if ((NumberOfBytesToWrite) <= (DUMMY_FILE_BUFFER_SIZE - Offset))
+				{
+					memcpy_s(textPointer + Offset, DUMMY_FILE_BUFFER_SIZE - Offset, Buffer, NumberOfBytesToWrite);
+					*NumberOfBytesWritten = NumberOfBytesToWrite;
+				}
+				else
+				{
+					memcpy_s(textPointer + Offset, DUMMY_FILE_BUFFER_SIZE - Offset,
+						Buffer, DUMMY_FILE_BUFFER_SIZE - Offset);
+					*NumberOfBytesWritten = DUMMY_FILE_BUFFER_SIZE - Offset;
+				}
+			}
+			else
+			{
+				*NumberOfBytesWritten = 0;
+			}
+		}
+#endif
+	}
 	return status;
 }
 
@@ -384,8 +499,7 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileNam
 	git_reference* ref = NULL;
 	int ec = git_reference_dwim(&ref, this_->repository, localName);
 	//iteratable_ =  raft_get_file_tree(this_, localName);
-	//
-	
+
 	
 	if (ref)
 	{
