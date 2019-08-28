@@ -30,6 +30,9 @@
     <ClCompile Include="raft_internals.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="raft_string_dictionary.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="getopt.h">
@@ -42,6 +45,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="raft_internals.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="raft_structures_dictionary.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="raft_base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="raft_string_dictionary.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

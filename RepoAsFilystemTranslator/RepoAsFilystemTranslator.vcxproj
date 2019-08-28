@@ -168,12 +168,16 @@
     <ClCompile Include="raft_internals.c" />
     <ClCompile Include="raft_log.c" />
     <ClCompile Include="raft_operations.c" />
+    <ClCompile Include="raft_string_dictionary.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="getopt.h" />
+    <ClInclude Include="raft_base.h" />
     <ClInclude Include="raft_internals.h" />
     <ClInclude Include="raft_log.h" />
     <ClInclude Include="raft_operations.h" />
+    <ClInclude Include="raft_string_dictionary.h" />
+    <ClInclude Include="raft_structures_dictionary.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
