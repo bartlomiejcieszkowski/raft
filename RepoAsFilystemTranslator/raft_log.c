@@ -12,5 +12,5 @@ void raft_log_exit(void)
 {
 	time_t total_time = time(NULL) - start_time;
 	if (total_time == 0) total_time = 1;
-	LOG_INFO("Total running time: %02lld:%02lld:%02lld", (total_time / 60) / 60, (total_time / 60) % 60, total_time % 60);
+	LOG_INFO("Total run time: %02lld:%02lld:%02lld", (total_time / 60) / 60, (total_time / 60) % 60, total_time % 60);
 }
