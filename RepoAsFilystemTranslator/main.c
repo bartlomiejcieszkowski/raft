@@ -69,6 +69,26 @@ void print_help(char* name)
 	printf("%s -r C:\\my_repo -m M:\\\n", name);
 }
 
+DWORD WINAPI InputThread(LPVOID lpParam)
+{
+	int input;
+	while (input = getchar())
+	{
+		switch (input)
+		{
+		case 'p':
+			printf("Input Thread running.\n");
+			break;
+		case 'q':
+			printf("Unmounting %S\n", (wchar_t*)lpParam);
+			DokanRemoveMountPoint(lpParam);
+			return 0;
+		default:
+			break;
+		}
+	}
+}
+
 int main(int argc, char* argv[])
 {
 	raft_log_init();
@@ -175,6 +195,15 @@ int main(int argc, char* argv[])
 
 	raft_set_dokan_options(dokan_options, pCtx->mount_point.buffer, (ULONG64)pCtx);
 	raft_set_dokan_operations(dokan_operations);
+
+	DWORD threadId = 0;
+	HANDLE hThread = CreateThread(NULL, 0, InputThread, (LPVOID)pCtx->mount_point.buffer, 0, &threadId);
+	if (hThread == NULL)
+	{
+		fprintf(stderr, "Failed creating input thread\n");
+		ec = -EFAULT;
+		goto exit;
+	}
 
 	int status = DokanMain(dokan_options, dokan_operations);
 	switch (status) {
