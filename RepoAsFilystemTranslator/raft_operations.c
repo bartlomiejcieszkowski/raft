@@ -438,9 +438,94 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_remotes(LPCWSTR FileNa
 	return STATUS_SUCCESS;
 }
 
+static NTSTATUS DOKAN_CALLBACK raft_operations_traverse_commit(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap, git_tree* tree)
+{
+	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
+
+	BOOL targetSubtree = offset == -1 ? TRUE : FALSE;
+	while (targetSubtree != TRUE)
+	{
+		int next_offset = bitmap_get_next_occurence(offset, separator_bitmap);
+
+		BOOL isLast = next_offset == -1 ? TRUE : FALSE;
+		int substringLen = isLast == TRUE ?
+			(wcslen(&FileName[offset])) : (next_offset - offset);
+
+		char* subPath = (char*)malloc(substringLen);
+
+		wcstombs_s(NULL, subPath, substringLen, &FileName[offset + 1], substringLen - 1);
+
+
+		size_t tree_entrycount = git_tree_entrycount(tree);
+		size_t i = 0;
+		while (i < tree_entrycount)
+		{
+			const git_tree_entry* tree_entry = git_tree_entry_byindex(tree, i);
+			git_object_t object_type = git_tree_entry_type(tree_entry);
+			const char* name = git_tree_entry_name(tree_entry);
+			if (0 == strcmp(subPath, name))
+			{
+				if (object_type != GIT_OBJECT_TREE)
+				{
+					LOG_ERROR("Request for directory, but is not a tree.. %s", subPath);
+					free(subPath);
+					return STATUS_INVALID_PARAMETER;
+				}
+
+				int error = git_tree_lookup(&tree, this_->repository, git_tree_entry_id(tree_entry));
+				// TODO: do i need to free this tree?
+				if (error != 0)
+				{
+					LOG_ERROR("Request for directory, but failed to get a tree.. %s", subPath);
+					free(subPath);
+					return STATUS_INVALID_PARAMETER;
+				}
+
+				break;
+			}
+			++i;
+		}
+		free(subPath);
+		offset = next_offset;
+		targetSubtree = offset == -1 ? TRUE : FALSE;
+	}
+
+	// we are at right subtree
+
+	WIN32_FIND_DATAW find_data = { 0 };
+	size_t tree_entrycount = git_tree_entrycount(tree);
+	size_t i = 0;
+	while (i < tree_entrycount)
+	{
+		const git_tree_entry* tree_entry = git_tree_entry_byindex(tree, i);
+
+		git_object_t object_type = git_tree_entry_type(tree_entry);
+		if (object_type == GIT_OBJECT_TREE)
+		{
+			// dir
+			find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
+		}
+		else if (object_type == GIT_OBJECT_BLOB)
+		{
+			// file ro
+			find_data.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
+		}
+
+		size_t converted;
+		const char* name = git_tree_entry_name(tree_entry);
+		mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
+			name, strlen(name));
+		FillFindData(&find_data, DokanFileInfo);
+		++i;
+	}
+	
+	return STATUS_SUCCESS;
+}
+
 
 static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileName, PFillFindData FillFindData, PDOKAN_FILE_INFO DokanFileInfo, int offset, bitmap_path_s* separator_bitmap)
 {
+	NTSTATUS status = STATUS_SUCCESS;
 	raft_context_s* this_ = (raft_context_s*)DokanFileInfo->DokanOptions->GlobalContext;
 
 	/* we are at root of handler*/
@@ -500,7 +585,6 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileNam
 	int ec = git_reference_dwim(&ref, this_->repository, localName);
 	//iteratable_ =  raft_get_file_tree(this_, localName);
 
-	
 	if (ref)
 	{
 		if (git_reference_is_branch(ref))
@@ -520,34 +604,8 @@ static NTSTATUS DOKAN_CALLBACK raft_operations_find_files_branch(LPCWSTR FileNam
 			if (entry)
 			{
 				git_tree* tree = (git_tree*)entry->value;
-
-				WIN32_FIND_DATAW find_data = { 0 };
-				size_t tree_entrycount = git_tree_entrycount(tree);
-				size_t i = 0;
-				while (i < tree_entrycount)
-				{
-					const git_tree_entry* tree_entry = git_tree_entry_byindex(tree, i);
-
-					git_object_t object_type = git_tree_entry_type(tree_entry);
-					if (object_type == GIT_OBJECT_TREE)
-					{
-						// dir
-						find_data.dwFileAttributes = FILE_ATTRIBUTE_DIRECTORY;
-					}
-					else if (object_type == GIT_OBJECT_BLOB)
-					{
-						// file ro
-						find_data.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
-					}
-
-					size_t converted;
-					const char* name = git_tree_entry_name(tree_entry);
-					mbstowcs_s(&converted, find_data.cFileName, (sizeof(find_data.cFileName) / sizeof(wchar_t)),
-						name, strlen(name));
-					FillFindData(&find_data, DokanFileInfo);
-					++i;
-				}
-
+				
+				status = raft_operations_traverse_commit(FileName, FillFindData, DokanFileInfo, next_offset, separator_bitmap, tree);
 				raft_entry_release(entry);
 			}
 		}
