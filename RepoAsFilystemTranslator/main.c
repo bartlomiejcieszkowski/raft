@@ -69,6 +69,18 @@ void print_help(char* name)
 	printf("%s -r C:\\my_repo -m M:\\\n", name);
 }
 
+void print_stats(void)
+{
+	LOG_INFO("Memory stats - allocations  - peak(%llu) current(%llu)",
+		g_raft_memory_statistics.peak_allocations,
+		g_raft_memory_statistics.current_allocations);
+#if DEBUG
+	LOG_INFO("Memory stats - memory usage - peak(%llu) current(%llu)",
+		g_raft_memory_statistics.peak_memory_usage,
+		g_raft_memory_statistics.current_memory_usage);
+#endif
+}
+
 DWORD WINAPI InputThread(LPVOID lpParam)
 {
 	int input;
@@ -79,6 +91,9 @@ DWORD WINAPI InputThread(LPVOID lpParam)
 		case 'p':
 			printf("Input Thread running.\n");
 			break;
+		case 's':
+			print_stats();
+			break;
 		case 'q':
 			printf("Unmounting %S\n", (wchar_t*)lpParam);
 			DokanRemoveMountPoint(lpParam);
@@ -87,6 +102,7 @@ DWORD WINAPI InputThread(LPVOID lpParam)
 			break;
 		}
 	}
+	return 0;
 }
 
 int main(int argc, char* argv[])
@@ -95,6 +111,9 @@ int main(int argc, char* argv[])
 
 	raft_context_s* pCtx = NULL;
 	int ec = 0;
+
+	DOKAN_OPERATIONS* dokan_operations = NULL;
+	DOKAN_OPTIONS* dokan_options = NULL;
 
 	LOG_INFO("Starting:      " PROGRAM_NAME );
 	int retVal = git_libgit2_init();
@@ -190,8 +209,8 @@ int main(int argc, char* argv[])
 	mbstowcs_s(&converted, pCtx->mount_point.buffer, mountPointLen,
 		mountPoint, mountPointLen - 1);
 
-	DOKAN_OPERATIONS* dokan_operations = raft_malloc_obj(sizeof(DOKAN_OPERATIONS), RAFT_OBJ_TYPE_UNDEFINED);
-	DOKAN_OPTIONS* dokan_options = raft_malloc_obj(sizeof(DOKAN_OPTIONS), RAFT_OBJ_TYPE_UNDEFINED);
+	dokan_operations = raft_malloc_obj(sizeof(DOKAN_OPERATIONS), RAFT_OBJ_TYPE_UNDEFINED); // free
+	dokan_options = raft_malloc_obj(sizeof(DOKAN_OPTIONS), RAFT_OBJ_TYPE_UNDEFINED); //free
 
 	raft_set_dokan_options(dokan_options, pCtx->mount_point.buffer, (ULONG64)pCtx);
 	raft_set_dokan_operations(dokan_operations);
@@ -263,6 +282,17 @@ exit:
 		free(pCtx);
 	}
 
+	if (dokan_operations)
+	{
+		raft_free(dokan_operations);
+	}
+
+	if (dokan_options)
+	{
+		raft_free(dokan_options);
+	}
+
+	print_stats();
 	raft_log_exit();
 	return ec;
 }

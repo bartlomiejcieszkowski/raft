@@ -47,71 +47,26 @@ struct raft_debug_header {
 
 typedef struct raft_debug_header raft_debug_header_s;
 
-// for debug purposes we will define an malloc/free internal call
-inline void* raft_malloc(size_t size)
-{
-	void* ptr = malloc(size
+struct raft_memory_statistics {
 #if DEBUG
-		+ sizeof(raft_debug_header_s)
+	size_t peak_memory_usage;
+	size_t current_memory_usage;
 #endif
-	);
+	size_t peak_allocations;
+	size_t current_allocations;
+};
 
-	if (ptr) {
-		memset(ptr, 0, size
-#if DEBUG
-			+ sizeof(raft_debug_header_s)
-#endif
-		);
+typedef struct raft_memory_statistics raft_memory_statistics_s;
 
-#if DEBUG
-		raft_debug_header_s* debug_header = (raft_debug_header_s*)ptr;
-		debug_header->creation_time = time(NULL) - start_time;
-		debug_header->obj_size = size;
-
-		ptr = (void*)& debug_header[1];
-#endif
-	}
-
-	return ptr;
-}
+extern raft_memory_statistics_s g_raft_memory_statistics;
 
 // for debug purposes we will define an malloc/free internal call
-inline void* raft_malloc_obj(size_t size, raft_obj_type_e type)
-{
-	void* ptr = malloc(size
-#if DEBUG
-		+ sizeof(raft_debug_header_s)
-#endif
-	);
+void* raft_malloc(size_t size);
 
-	if (ptr) {
-		memset(ptr, 0, size
-#if DEBUG
-			+ sizeof(raft_debug_header_s)
-#endif
-		);
+// for debug purposes we will define an malloc/free internal call
+void* raft_malloc_obj(size_t size, raft_obj_type_e type);
 
-#if DEBUG
-		raft_debug_header_s* debug_header = (raft_debug_header_s*)ptr;
-		debug_header->creation_time = time(NULL) - start_time;
-		debug_header->obj_size = size;
-
-		ptr = (void*)& debug_header[1];
-
-#endif
-		((raft_obj_header_s*)ptr)->type = type;
-	}
-
-	return ptr;
-}
-
-inline void raft_free(void* ptr)
-{
-#if DEBUG
-	ptr = &((raft_debug_header_s*)ptr)[-1];
-#endif
-	free(ptr);
-}
+void raft_free(void* ptr);
 
 
 #endif /* RAFT_BASE_H */
